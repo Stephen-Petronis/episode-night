@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#16122e">
+<!--HEAD-->
+<title>Episode Night</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&display=swap">
+<link rel="stylesheet" href="style.css">
+<!--/HEAD-->
+</head>
+<body>
+<!--BODY-->
+<div id="app">
+  <!-- Main menu: the episode lineup -->
+  <section id="menu" class="screen menu">
+    <header class="menu-head">
+      <p class="menu-eyebrow">Tonight’s lineup</p>
+      <h1 id="game-title">Episode Night</h1>
+    </header>
+    <div id="episode-list" class="episode-list"></div>
+    <footer class="menu-foot">
+      <button id="unlock-all-btn" class="link-btn" hidden>Unlock all (dev)</button>
+      <button id="reset-btn" class="link-btn">Reset progress</button>
+    </footer>
+  </section>
+
+  <!-- Player: videos + minigames -->
+  <section id="player" class="screen player" hidden>
+    <div id="stage" class="stage"></div>
+    <div id="tap-catcher" class="tap-catcher" aria-hidden="true"></div>
+    <div id="game-layer" class="game-layer" hidden></div>
+    <button id="big-play" class="big-play" aria-label="Play" hidden></button>
+    <div id="hud" class="hud">
+      <button id="home-btn" class="hud-btn" aria-label="Back to episodes"></button>
+      <div id="step-track" class="step-track"></div>
+      <button id="skip-btn" class="hud-btn hud-skip" hidden></button>
+    </div>
+  </section>
+
+  <div id="overlay" class="overlay" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+<!--/BODY-->
+</body>
+</html>
