@@ -108,14 +108,17 @@ const CONFIG = {
 };
 
 /* ===== Episode Night hook =====
-   On a win the game posts {type:"minigame-complete", id, result:"win"} to the parent
-   window and fires a "minigame-complete" event on window, so the player can move on
-   to the next MP4. A loss just offers Try Again in place; nothing is sent. */
-function reportWin() {
-  const msg = { type: "minigame-complete", id: CONFIG.id, result: "win" };
-  try { if (window.parent && window.parent !== window) window.parent.postMessage(msg, "*"); } catch (e) {}
+   On a win or a loss the game posts {type:"minigame-complete", id, result:"win"|"lose"}
+   to the parent window and fires a "minigame-complete" event on window, so the episode
+   can branch to the Bear-wins or Seagull-wins video.
+   Opened on its own (not inside Episode Night), a loss offers Try Again instead. */
+const EMBEDDED = window.parent && window.parent !== window;
+function reportResult(result) {
+  const msg = { type: "minigame-complete", id: CONFIG.id, result };
+  try { if (EMBEDDED) window.parent.postMessage(msg, "*"); } catch (e) {}
   window.dispatchEvent(new CustomEvent("minigame-complete", { detail: msg }));
 }
+function reportWin() { reportResult("win"); }
 
 /* ---------- sprites: h = drawn height in game units, ax = where the body center sits (0–1 of width) ---------- */
 const SPR = {
@@ -176,6 +179,11 @@ $("ovBtn").addEventListener("click", () => {
   if (S.phase === "win") {
     reportWin();
     $("ovTitle").textContent = "Bar's safe!"; $("ovText").textContent = "On to the next part of the episode."; $("ovBtn").hidden = true;
+    return;
+  }
+  if (S.phase === "lose" && EMBEDDED) {
+    reportResult("lose");
+    $("ovBtn").hidden = true;
     return;
   }
   reset(); ov.hidden = true; S.phase = "countdown"; S.t = 0;
@@ -306,8 +314,10 @@ function showEnd() {
     $("ovBtn").textContent = "CONTINUE";
   } else {
     $("ovTitle").textContent = "Knocked out!";
-    $("ovText").textContent = "Tip: hold Block when the Seagull flashes \"!\", then punch him while he's dizzy.";
-    $("ovBtn").textContent = "TRY AGAIN";
+    $("ovText").textContent = EMBEDDED
+      ? "The Seagull got the better of Bear this time."
+      : "Tip: hold Block when the Seagull flashes \"!\", then punch him while he's dizzy.";
+    $("ovBtn").textContent = EMBEDDED ? "CONTINUE" : "TRY AGAIN";
   }
   $("ovBtn").focus();
 }

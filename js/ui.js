@@ -34,6 +34,8 @@ export class UI {
     this.clipCount = $("#clip-count");
     this.skipSpacer = $("#skip-spacer");
     this.actionWrap = $("#action-wrap");
+    this.actionTimer = $("#action-timer");
+    this.actionTimerFill = $("#action-timer-fill");
     this.actionBtn = $("#action-btn");
     this._action = null;
     this.track = $("#step-track");
@@ -126,6 +128,11 @@ export class UI {
       const state = beaten ? "beaten" : unlocked ? "current" : "locked";
       const videos = ep.steps.filter(s => s.type === "video").length;
       const games = ep.steps.length - videos;
+      const totalEndings = endingIds(ep).length;
+      const found = this.progress.endingsFound(ep.id).length;
+      const detail = totalEndings
+        ? `${found} of ${totalEndings} endings found`
+        : `${videos} ${videos === 1 ? "video" : "videos"} · ${games} ${games === 1 ? "game" : "games"}`;
 
       const card = document.createElement("button");
       card.className = `ep-card is-${state}`;
@@ -147,7 +154,7 @@ export class UI {
             : isCurrent ? `<span class="chip">Up next</span>`
             : `<span>Finish Episode ${i} to unlock</span>`
           }</span>
-          <span class="ep-steps">${videos} ${videos === 1 ? "video" : "videos"} · ${games} ${games === 1 ? "game" : "games"}</span>
+          <span class="ep-steps">${detail}</span>
         </span>`;
       card.querySelector("img")?.addEventListener("error", e => e.target.remove());
 
@@ -175,8 +182,9 @@ export class UI {
     this._closeModal();
   }
 
-  setStep(ep, index, canSkip) {
-    const step = ep.steps[index];
+  // `steps` is the path being played (it changes when the story branches).
+  setStep(ep, steps, index, canSkip) {
+    const step = steps[index];
     this.mode = step.type === "video" ? "video" : "game";
     this.playerScreen.dataset.mode = this.mode;
     this.videoView.hidden = this.mode !== "video";
@@ -184,16 +192,16 @@ export class UI {
     this.skipBtn.hidden = !canSkip;
     this.skipSpacer.hidden = canSkip;
 
-    this.track.innerHTML = ep.steps.map((s, i) => {
+    this.track.innerHTML = steps.map((s, i) => {
       const st = i < index ? "done" : i === index ? "now" : "todo";
       return s.type === "game"
         ? `<span class="trk trk-game ${st}">${ICON.star}</span>`
         : `<span class="trk trk-video ${st}"></span>`;
     }).join("");
-    this.track.setAttribute("aria-label", `Part ${index + 1} of ${ep.steps.length}`);
+    this.track.setAttribute("aria-label", `Part ${index + 1} of ${steps.length}`);
 
     if (this.mode === "video") {
-      const videos = ep.steps.filter(s => s.type === "video");
+      const videos = steps.filter(s => s.type === "video");
       this.clipCount.textContent = `Clip ${videos.indexOf(step) + 1} of ${videos.length}`;
       this._onTime(0, NaN);
       this._setPP(true);
@@ -214,14 +222,22 @@ export class UI {
 
   // A big button over a looping clip (e.g. PUNCH! on the Seagull close-up).
   // Appears `appearAt` seconds in, then flashes once every `flashEvery` seconds.
-  showActionButton(opts, onTap) {
+  // With `timeLimit`, a bar drains under it; if it runs out, onTimeout fires.
+  // The timer only runs while the video plays, so pausing pauses it too.
+  showActionButton(opts, { onTap, onTimeout }) {
     const o = typeof opts === "string" ? { label: opts } : opts;
     this._action = {
-      onTap,
+      onTap, onTimeout,
       appearAt: o.appearAt ?? 1,
+      timeLimit: o.timeLimit || 0,
+      elapsed: 0,
+      lastT: null,
       shown: false,
       fired: false,
     };
+    this.actionTimer.hidden = !o.timeLimit;
+    this.actionTimerFill.style.width = "100%";
+    this.actionWrap.classList.remove("gone");
     this.actionBtn.textContent = o.label || "GO!";
     this.actionBtn.setAttribute("aria-label", o.label || "Go");
     this.actionBtn.style.setProperty("--flash", `${o.flashEvery ?? 2}s`);
@@ -249,8 +265,31 @@ export class UI {
     setTimeout(() => a.onTap(), 280);      // let the POW land, then fight
   }
 
+  _timeoutAction() {
+    const a = this._action;
+    if (!a || a.fired) return;
+    a.fired = true;
+    this.actionWrap.classList.add("gone");
+    setTimeout(() => a.onTimeout?.(), 350);
+  }
+
+  _tickAction(t, d) {
+    const a = this._action;
+    if (!a || !a.shown || a.fired || !a.timeLimit) return;
+    if (a.lastT != null) {
+      let dt = t - a.lastT;
+      if (dt < 0 && d > 0) dt += d;          // the clip looped back to the start
+      if (dt > 0 && dt < 1) a.elapsed += dt;
+    }
+    a.lastT = t;
+    const left = Math.max(0, 1 - a.elapsed / a.timeLimit);
+    this.actionTimerFill.style.width = (left * 100) + "%";
+    if (left <= 0) this._timeoutAction();
+  }
+
   _onTime(t, d) {
     if (this._action && !this._action.shown && t >= this._action.appearAt) this._revealAction();
+    this._tickAction(t, d);
     const pct = d > 0 ? Math.min(100, (t / d) * 100) : 0;
     this.clipFill.style.width = pct + "%";
     this.clipTime.textContent = d > 0 ? `${fmt(t)} / ${fmt(d)}` : "";
@@ -280,16 +319,22 @@ export class UI {
     });
   }
 
-  episodeComplete(ep, unlockedNext) {
+  episodeComplete(ep, { unlockedNext, ending }) {
     const n = this.config.episodes.indexOf(ep) + 1;
+    const total = endingIds(ep).length;
+    const found = this.progress.endingsFound(ep.id).length;
+    const lines = [];
+    if (ending && total) {
+      lines.push(`You found ${found} of ${total} endings.` +
+        (found < total ? " Play again and try something different." : " You found them all!"));
+    }
+    if (unlockedNext) lines.push(`Episode ${n + 1}, “${escapeHtml(unlockedNext.title)},” is unlocked.`);
     return this.modal({
       kind: "win",
       art: `<div class="burst">${ICON.star}</div>`,
-      eyebrow: `Episode ${n}`,
-      title: "Episode complete!",
-      body: unlockedNext
-        ? `Episode ${n + 1}, “${escapeHtml(unlockedNext.title)},” is unlocked.`
-        : "",
+      eyebrow: ending ? `Episode ${n} · Ending` : `Episode ${n}`,
+      title: ending ? escapeHtml(ending.title) : "Episode complete!",
+      body: lines.join("<br>"),
       buttons: [{ label: "Back to episodes", value: true, primary: true }],
     });
   }
@@ -351,6 +396,10 @@ export class UI {
     clearTimeout(this._toastTimer);
     this._toastTimer = setTimeout(() => this.toastEl.classList.remove("show"), 2000);
   }
+}
+
+function endingIds(ep) {
+  return Object.entries(ep.branches || {}).filter(([, b]) => b.ending).map(([id]) => id);
 }
 
 function fmt(sec) {

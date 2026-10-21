@@ -369,6 +369,24 @@ svg { display: block; }
   touch-action: none;
   animation: actionIn 0.35s cubic-bezier(0.2, 1.6, 0.4, 1), actionFlash var(--flash, 2s) ease-out 0.35s infinite;
 }
+.action-wrap { gap: 16px; transition: opacity 0.3s ease, transform 0.3s ease; }
+.action-wrap.gone { opacity: 0; transform: translateY(16px) scale(0.9); }
+.action-timer {
+  display: block;
+  width: 46%;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(12, 9, 28, 0.6);
+  box-shadow: 0 0 0 2px rgba(247, 242, 255, 0.35);
+  overflow: hidden;
+}
+.action-timer > span {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: var(--marquee);
+  transition: width 0.3s linear;
+}
 .action-btn:active { transform: translateY(5px); box-shadow: 0 2px 0 #a8382c, 0 6px 20px rgba(0, 0, 0, 0.5); }
 .action-btn.hit {
   animation: actionHit 0.28s ease-out forwards;

@@ -26,19 +26,22 @@ export class Progress {
   constructor(episodes) {
     this.episodes = episodes;
     this.beaten = new Set();
+    this.endings = {};          // { ep1: ["bearWins", "birdLeaves"], ... }
   }
 
   async load() {
     try {
       const data = JSON.parse((await readRaw()) || "{}");
       this.beaten = new Set(data.beaten || []);
+      this.endings = data.endings || {};
     } catch {
       this.beaten = new Set();
+      this.endings = {};
     }
   }
 
   async save() {
-    await writeRaw(JSON.stringify({ beaten: [...this.beaten] }));
+    await writeRaw(JSON.stringify({ beaten: [...this.beaten], endings: this.endings }));
   }
 
   isBeaten(id) { return this.beaten.has(id); }
@@ -55,15 +58,25 @@ export class Progress {
     return next ? next.id : null;
   }
 
-  async markBeaten(id) {
-    const wasNew = !this.beaten.has(id);
+  // Finishing an episode by ANY ending counts as beating it.
+  // Returns { firstTime, newEnding }.
+  async markBeaten(id, endingId) {
+    const firstTime = !this.beaten.has(id);
     this.beaten.add(id);
+    let newEnding = false;
+    if (endingId) {
+      const list = this.endings[id] || (this.endings[id] = []);
+      if (!list.includes(endingId)) { list.push(endingId); newEnding = true; }
+    }
     await this.save();
-    return wasNew;
+    return { firstTime, newEnding };
   }
+
+  endingsFound(id) { return this.endings[id] || []; }
 
   async reset() {
     this.beaten.clear();
+    this.endings = {};
     await this.save();
   }
 }

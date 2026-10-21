@@ -7,13 +7,13 @@
 // The game tells us it was beaten by doing either of these on a win:
 //   window.parent.postMessage({ type: "minigame-complete", result: "win" }, "*")
 //   window.dispatchEvent(new CustomEvent("minigame-complete", { detail: { result: "win" } }))
-// (Bear vs Seagull already does both.) A loss sends nothing; the game
-// handles "try again" itself.
+// To branch the story on a loss, send result: "lose" the same way. A game
+// that never sends "lose" just handles "try again" itself.
 
 export default {
   name: "HTML minigame",
 
-  start(container, { params = {}, onWin }) {
+  start(container, { params = {}, onWin, onLose }) {
     const src = "minigames/html/" + params.src;
     const frame = document.createElement("iframe");
     frame.className = "html-game";
@@ -22,13 +22,17 @@ export default {
     frame.setAttribute("allow", "autoplay");
     container.appendChild(frame);
 
-    let won = false;
-    const win = () => { if (!won) { won = true; onWin(); } };
+    let over = false;
+    const win = () => { if (!over) { over = true; onWin(); } };
+    const lose = () => { if (!over) { over = true; onLose?.(); } };
 
     const onMessage = e => {
       if (e.source !== frame.contentWindow) return;
       const d = e.data;
-      if (d && d.type === "minigame-complete" && d.result === "win") win();
+      if (d && d.type === "minigame-complete") {
+        if (d.result === "win") win();
+        else if (d.result === "lose") lose();
+      }
     };
     window.addEventListener("message", onMessage);
 
@@ -36,7 +40,8 @@ export default {
     frame.addEventListener("load", () => {
       try {
         frame.contentWindow.addEventListener("minigame-complete", e => {
-          if (!e.detail || e.detail.result === "win") win();
+          if (e.detail?.result === "lose") lose();
+          else win();
         });
         frame.contentWindow.focus();      // so keyboard controls work on desktop
       } catch { /* different origin: postMessage still works */ }

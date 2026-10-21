@@ -30,6 +30,12 @@ export const CONFIG = {
   //    { type: "video", src: "file.mp4", loop: true, button: { label: "PUNCH!",
   //        appearAt: 1, flashEvery: 2 } }
   //        → clip repeats until the button is tapped, then the episode moves on
+  //          (add timeLimit: 6 and onMiss: "branchName" to branch if it isn't)
+  //
+  //  Branching (choose-your-own-adventure):
+  //    onMiss / onTap on a button step, onWin / onLose on a game step,
+  //    each naming one of the episode's `branches`. A branch's steps play
+  //    next; give it `ending: "Name"` to count it as an ending.
   // -----------------------------------------------------------
   episodes: [
     {
@@ -40,11 +46,20 @@ export const CONFIG = {
         { type: "video", src: "bvs_1.mp4" },   // Bear and Fox at the bar; the door bangs open
         { type: "video", src: "bvs_2.mp4" },   // the Seagull starts yelling
         { type: "video", src: "bvs_3.mp4" },   // Bear and Fox laugh at him
-        // The Seagull close-up loops (he keeps squawking) until you hit PUNCH.
+        // The Seagull close-up loops (he keeps squawking). PUNCH! appears 1s in
+        // and flashes every 2s. Tap it within 6s to fight; miss it and he leaves.
         { type: "video", src: "bvs_4.mp4", loop: true,
-          button: { label: "PUNCH!", appearAt: 1, flashEvery: 2 } },
-        { type: "game",  html: "bear-vs-seagull.html", title: "Bear vs Seagull" },
+          button: { label: "PUNCH!", appearAt: 1, flashEvery: 2, timeLimit: 6 },
+          onMiss: "birdLeaves" },
+        { type: "game",  html: "bear-vs-seagull.html", title: "Bear vs Seagull",
+          onWin: "bearWins", onLose: "birdWins" },
       ],
+      // Where the story can go. Each of these is an ending.
+      branches: {
+        bearWins:   { ending: "Bear Saves the Bar",   steps: [{ type: "video", src: "bvs_end_bearwins.mp4" }] },
+        birdWins:   { ending: "The Seagull Wins",     steps: [{ type: "video", src: "bvs_end_gullwins.mp4" }] },
+        birdLeaves: { ending: "The Seagull Walks Out", steps: [{ type: "video", src: "bvs_end_leave.mp4" }] },
+      },
     },
     // Episodes 2 and 3 are still placeholders. Swap in real videos and games.
     {

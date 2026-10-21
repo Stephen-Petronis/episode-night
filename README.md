@@ -58,6 +58,17 @@ Keep text and faces away from the edges.
 Sizes to expect at 720×900, CRF 23: roughly 5–15 MB per minute. Flat cartoon
 art compresses better; try `CRF=26`.
 
+## Branching and endings
+
+Episode 1 shows the pattern. Steps can send the story down a named branch:
+
+- `onMiss` / `onTap` on a video with a button (e.g. PUNCH! with `timeLimit`)
+- `onWin` / `onLose` on a minigame
+
+Branches live in the episode's `branches`. Give one `ending: "Name"` and it
+counts as an ending; the menu shows "1 of 3 endings found". Any ending
+completes the episode and unlocks the next one.
+
 ## Adding a minigame
 
 **Standalone HTML games (easiest):** put the file in `minigames/html/` and

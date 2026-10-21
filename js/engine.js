@@ -1,5 +1,12 @@
 // Engine — walks through an episode's steps in order:
 //   video → video → minigame → video → ... → back to the menu.
+//
+// Branching: a step can send the story down a named branch based on what
+// happened, and the branch's steps play next:
+//   { type: "video", ..., button: {...}, onMiss: "birdLeaves" }   // button not tapped in time
+//   { type: "game",  ..., onWin: "bearWins", onLose: "birdWins" }  // minigame result
+// Branches live in the episode's `branches`; one with `ending` set is an ending.
+//
 // It doesn't touch the DOM directly; it tells the UI what to show.
 
 export class Engine {
@@ -13,47 +20,75 @@ export class Engine {
     this.player.unlock();
     const rewatch = this.progress.isBeaten(episode.id);
     const canSkip = dev || (rewatch && this.config.allowSkipWhenRewatching);
-    const run = { episode, canSkip, cancelled: false, step: -1 };
+    const run = {
+      episode, canSkip, cancelled: false, step: -1,
+      steps: [...episode.steps],   // the path actually taken; grows when a branch is picked
+      ending: null,                // { id, title } once an ending branch is entered
+    };
     this.run = run;
     this.ui.showPlayer(episode);
     return this._play(run);
   }
 
-  async _play(run) {
-    const { steps } = run.episode;
+  // Switch to a branch: everything after step i is replaced by the branch's steps.
+  _branch(run, i, name) {
+    const br = run.episode.branches?.[name];
+    if (!br) { console.warn(`No branch called "${name}" in ${run.episode.id}`); return; }
+    run.steps = run.steps.slice(0, i + 1).concat(br.steps || []);
+    if (br.ending) run.ending = { id: name, title: br.ending };
+  }
 
-    for (let i = 0; i < steps.length; i++) {
+  async _play(run) {
+    for (let i = 0; i < run.steps.length; i++) {
       if (run.cancelled) return;
       run.step = i;
+      const steps = run.steps;
       const step = steps[i];
-      this.ui.setStep(run.episode, i, run.canSkip);
+      this.ui.setStep(run.episode, steps, i, run.canSkip);
 
       if (step.type === "video") {
         // play() first (must stay synchronous on the very first step so the
         // tap still counts), then start loading the following clip.
         const done = this.player.play(step.src, { loop: !!step.loop });
         if (steps[i + 1]?.type === "video") this.player.preload(steps[i + 1].src);
-        if (step.button) this.ui.showActionButton(step.button, () => this.player.done("action"));
-        await done;
+        if (step.button) {
+          this.ui.showActionButton(step.button, {
+            onTap: () => this.player.done("action"),
+            onTimeout: () => this.player.done("miss"),
+          });
+        }
+        const result = await done;
         this.ui.hideActionButton();
+        if (run.cancelled) return;
+        if (result === "miss" && step.onMiss) this._branch(run, i, step.onMiss);
+        else if (result === "action" && step.onTap) this._branch(run, i, step.onTap);
       } else if (step.type === "game") {
         this.player.unloadActive();
-        const nextVideo = steps.slice(i + 1).find(s => s.type === "video");
-        if (nextVideo) this.player.preload(nextVideo.src);   // ready for after the game
+        // Preload whichever video is most likely next (the win path).
+        const winSteps = step.onWin ? run.episode.branches?.[step.onWin]?.steps : steps.slice(i + 1);
+        const nextVideo = (winSteps || []).find(s => s.type === "video");
+        if (nextVideo) this.player.preload(nextVideo.src);
 
         const result = await this._runGame(run, step);
         if (run.cancelled) return;
-        // The "Keep watching" tap gives iOS a fresh gesture for the next video.
-        if (result === "won" && i < steps.length - 1) await this.ui.celebrate();
+        const won = result === "won" || result === "skipped";
+        if (won && step.onWin) this._branch(run, i, step.onWin);
+        if (result === "lost" && step.onLose) this._branch(run, i, step.onLose);
+        // Built-in games get a "You did it!" panel (also gives iOS a fresh tap
+        // for the next video). HTML games show their own end screen.
+        if (result === "won" && !step.html && i < run.steps.length - 1) await this.ui.celebrate();
       }
     }
 
     if (run.cancelled) return;
     this.player.stop();
-    const firstTime = await this.progress.markBeaten(run.episode.id);
+    const { firstTime } = await this.progress.markBeaten(run.episode.id, run.ending?.id);
     const eps = this.config.episodes;
     const next = eps[eps.indexOf(run.episode) + 1];
-    await this.ui.episodeComplete(run.episode, firstTime && next ? next : null);
+    await this.ui.episodeComplete(run.episode, {
+      unlockedNext: firstTime && next ? next : null,
+      ending: run.ending,
+    });
     if (this.run === run) this.run = null;
     this.ui.showMenu();
   }
@@ -84,6 +119,7 @@ export class Engine {
       cleanup = game.start(layer, {
         params,
         onWin: () => finish("won"),
+        onLose: () => finish("lost"),
       });
     });
   }
