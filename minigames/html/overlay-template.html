@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Overlay game template</title>
+<!--
+  STARTER TEMPLATE for a see-through game that plays ON TOP of a video clip.
+  Copy this file, rename it, and build your game inside #game.
+
+  How it fits in Episode Night:
+  - The page background MUST stay transparent so the video shows through.
+    Only draw the things the player should see (targets, scores, effects).
+  - The page fills the 4:5 video frame exactly.
+  - Every animation frame the game receives the clip's clock:
+        { type: "video-time", t, duration, loops, paused }
+    t = seconds into the clip, loops = how many times a looping clip has
+    wrapped around. Use it to time things to the action in the video.
+  - At the start it also receives { type: "overlay:init", params } with the
+    params set for this scene in the Studio.
+  - When the player wins or loses, call finish("win") or finish("lose").
+    The story then branches (On win / On lose in the Studio). If the clip
+    ends (and doesn't loop) before either happens, that counts as a miss.
+-->
+<style>
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+  body { font-family: system-ui, sans-serif; color: #fff; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+  #game { position: absolute; inset: 0; }
+  .hint { position: absolute; left: 0; right: 0; top: 12px; text-align: center; font-weight: 800; text-shadow: 0 2px 6px #000; }
+</style>
+
+<div id="game">
+  <p class="hint">Tap anywhere to win (template)</p>
+</div>
+
+<script>
+  let params = {};
+  let video = { t: 0, duration: 0, loops: 0, paused: false };
+  let over = false;
+
+  function finish(result) {             // "win" or "lose"
+    if (over) return;
+    over = true;
+    parent.postMessage({ type: "minigame-complete", result }, "*");
+  }
+
+  addEventListener("message", e => {
+    const d = e.data || {};
+    if (d.type === "overlay:init") params = d.params || {};
+    if (d.type === "video-time") video = d;
+  });
+
+  // ---- your game goes here ----
+  document.getElementById("game").addEventListener("pointerdown", () => finish("win"));
+</script>

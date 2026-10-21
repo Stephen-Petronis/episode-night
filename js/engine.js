@@ -5,6 +5,7 @@
 // happened, and the branch's steps play next:
 //   { type: "video", ..., button: {...}, onMiss: "birdLeaves" }   // button not tapped in time
 //   { type: "game",  ..., onWin: "bearWins", onLose: "birdWins" }  // minigame result
+//   { type: "video", ..., overlay: "game.html", onWin, onLose, onMiss }  // see-through game over the clip
 // Branches live in the episode's `branches`; one with `ending` set is an ending.
 //
 // It doesn't touch the DOM directly; it tells the UI what to show.
@@ -16,14 +17,22 @@ export class Engine {
   }
 
   // Call from inside the tap on an episode card (sound unlock needs the tap).
-  start(episode, { dev = false } = {}) {
+  // `from: { lane, index }` starts mid-story ("main" or a branch name) — used
+  // by the Studio's "Play from here".
+  start(episode, { dev = false, from = null } = {}) {
     this.player.unlock();
     const rewatch = this.progress.isBeaten(episode.id);
     const canSkip = dev || (rewatch && this.config.allowSkipWhenRewatching);
+    const lane = from?.lane || "main";
+    const at = from?.index || 0;
+    const laneSteps = lane === "main" ? episode.steps : (episode.branches?.[lane]?.steps || []);
+    const br = lane === "main" ? null : episode.branches?.[lane];
     const run = {
       episode, canSkip, cancelled: false, step: -1,
-      steps: [...episode.steps],   // the path actually taken; grows when a branch is picked
-      ending: null,                // { id, title } once an ending branch is entered
+      steps: laneSteps.slice(at),  // the path actually taken; grows when a branch is picked
+      // where each step came from, so the Studio can highlight the scene playing
+      origins: laneSteps.slice(at).map((_, k) => ({ lane, index: at + k })),
+      ending: br?.ending ? { id: lane, title: br.ending } : null,
     };
     this.run = run;
     this.ui.showPlayer(episode);
@@ -35,6 +44,7 @@ export class Engine {
     const br = run.episode.branches?.[name];
     if (!br) { console.warn(`No branch called "${name}" in ${run.episode.id}`); return; }
     run.steps = run.steps.slice(0, i + 1).concat(br.steps || []);
+    run.origins = run.origins.slice(0, i + 1).concat((br.steps || []).map((_, k) => ({ lane: name, index: k })));
     if (br.ending) run.ending = { id: name, title: br.ending };
   }
 
@@ -45,6 +55,7 @@ export class Engine {
       const steps = run.steps;
       const step = steps[i];
       this.ui.setStep(run.episode, steps, i, run.canSkip);
+      this.onStep?.(run.episode, run.origins[i]);
 
       if (step.type === "video") {
         // play() first (must stay synchronous on the very first step so the
@@ -57,11 +68,22 @@ export class Engine {
             onTimeout: () => this.player.done("miss"),
           });
         }
+        // See-through game layered over the playing clip.
+        if (step.overlay) {
+          this.ui.showOverlayGame(step, {
+            onWin: () => this.player.done("win"),
+            onLose: () => this.player.done("lose"),
+          });
+        }
         const result = await done;
         this.ui.hideActionButton();
+        this.ui.hideOverlayGame();
         if (run.cancelled) return;
-        if (result === "miss" && step.onMiss) this._branch(run, i, step.onMiss);
+        const missed = result === "miss" || (result === "ended" && step.overlay);
+        if (missed && step.onMiss) this._branch(run, i, step.onMiss);
         else if (result === "action" && step.onTap) this._branch(run, i, step.onTap);
+        else if (result === "win" && step.onWin) this._branch(run, i, step.onWin);
+        else if (result === "lose" && step.onLose) this._branch(run, i, step.onLose);
       } else if (step.type === "game") {
         this.player.unloadActive();
         // Preload whichever video is most likely next (the win path).

@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "episodes": [
+    {
+      "id": "ep1",
+      "title": "Bear vs Seagull",
+      "thumb": "videos/bvs_thumb.jpg",
+      "steps": [
+        {
+          "note": "Bear and Fox at the bar; the door bangs open",
+          "type": "video",
+          "src": "bvs_1.mp4"
+        },
+        {
+          "note": "The Seagull starts yelling",
+          "type": "video",
+          "src": "bvs_2.mp4"
+        },
+        {
+          "note": "Bear and Fox laugh at him",
+          "type": "video",
+          "src": "bvs_3.mp4"
+        },
+        {
+          "note": "Seagull close-up loops until PUNCH! (miss it and he leaves)",
+          "type": "video",
+          "src": "bvs_4.mp4",
+          "loop": true,
+          "button": {
+            "label": "PUNCH!",
+            "appearAt": 1,
+            "flashEvery": 2,
+            "timeLimit": 6
+          },
+          "onMiss": "birdLeaves"
+        },
+        {
+          "type": "game",
+          "html": "bear-vs-seagull.html",
+          "title": "Bear vs Seagull",
+          "onWin": "bearWins",
+          "onLose": "birdWins",
+          "note": "The fight"
+        }
+      ],
+      "branches": {
+        "bearWins": {
+          "ending": "Bear Saves the Bar",
+          "steps": [
+            {
+              "note": "Bear and Fox celebrate over the knocked-out Seagull",
+              "type": "video",
+              "src": "bvs_end_bearwins.mp4"
+            }
+          ]
+        },
+        "birdWins": {
+          "ending": "The Seagull Wins",
+          "steps": [
+            {
+              "note": "The Seagull pummels Bear",
+              "type": "video",
+              "src": "bvs_end_gullwins.mp4"
+            }
+          ]
+        },
+        "birdLeaves": {
+          "ending": "The Seagull Walks Out",
+          "steps": [
+            {
+              "note": "The Seagull storms out and the door shuts",
+              "type": "video",
+              "src": "bvs_end_leave.mp4"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ep2",
+      "title": "Lost and Found",
+      "thumb": "videos/ep2_thumb.jpg",
+      "steps": [
+        {
+          "type": "video",
+          "src": "ep2_intro.mp4"
+        },
+        {
+          "type": "game",
+          "game": "matchPairs",
+          "params": {
+            "pairs": 3
+          }
+        },
+        {
+          "note": "See-through game demo: tap the targets over the playing clip",
+          "type": "video",
+          "src": "ep2_middle.mp4",
+          "loop": true,
+          "overlay": "tap-targets.html",
+          "params": {
+            "count": 4,
+            "time": 10,
+            "label": "BOP!"
+          }
+        },
+        {
+          "type": "video",
+          "src": "ep2_ending.mp4"
+        }
+      ]
+    },
+    {
+      "id": "ep3",
+      "title": "Night Lights",
+      "thumb": "videos/ep3_thumb.jpg",
+      "steps": [
+        {
+          "type": "video",
+          "src": "ep3_intro.mp4"
+        },
+        {
+          "type": "game",
+          "game": "matchPairs",
+          "params": {
+            "pairs": 4
+          }
+        },
+        {
+          "type": "video",
+          "src": "ep3_ending.mp4"
+        }
+      ]
+    }
+  ]
+}

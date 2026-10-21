@@ -33,6 +33,8 @@ export class UI {
     this.clipTime = $("#clip-time");
     this.clipCount = $("#clip-count");
     this.skipSpacer = $("#skip-spacer");
+    this.overlayLayer = $("#overlay-layer");
+    this._overlay = null;
     this.actionWrap = $("#action-wrap");
     this.actionTimer = $("#action-timer");
     this.actionTimerFill = $("#action-timer-fill");
@@ -109,6 +111,7 @@ export class UI {
 
   showMenu() {
     this.hideActionButton();
+    this.hideOverlayGame();
     this.mode = "menu";
     this._closeModal();
     this.playerScreen.hidden = true;
@@ -243,6 +246,60 @@ export class UI {
     this.actionBtn.style.setProperty("--flash", `${o.flashEvery ?? 2}s`);
     this.actionBtn.classList.remove("hit");
     this.actionWrap.hidden = true;
+  }
+
+  // ---------- See-through game over the video ----------
+  // The game is an HTML file with a transparent background. It receives the
+  // clip's time ~60x a second and reports a win or loss the same way full
+  // minigames do (see minigames/html/overlay-template.html).
+  showOverlayGame(step, { onWin, onLose }) {
+    this.hideOverlayGame();
+    const params = new URLSearchParams(step.params || {}).toString();
+    const frame = document.createElement("iframe");
+    frame.className = "overlay-game";
+    frame.title = step.title || "Game";
+    frame.setAttribute("allowtransparency", "true");
+    frame.src = this.config.htmlGameBase + step.overlay + (params ? "?" + params : "");
+    this.overlayLayer.appendChild(frame);
+
+    const o = { frame, done: false, raf: 0 };
+    const finish = fn => { if (!o.done) { o.done = true; fn(); } };
+    o.onMessage = e => {
+      if (e.source !== frame.contentWindow) return;
+      const d = e.data || {};
+      if (d.type === "minigame-complete") finish(d.result === "lose" ? onLose : onWin);
+    };
+    window.addEventListener("message", o.onMessage);
+
+    // Feed the clip's clock to the game so it can time things to the video.
+    let loops = 0, last = 0;
+    const tick = () => {
+      const v = this.player.active;
+      const t = v.currentTime || 0;
+      if (t < last - 0.5) loops++;          // wrapped around (looping clip)
+      last = t;
+      frame.contentWindow?.postMessage({
+        type: "video-time", t, duration: v.duration || 0, loops, paused: v.paused,
+      }, "*");
+      o.raf = requestAnimationFrame(tick);
+    };
+    frame.addEventListener("load", () => {
+      frame.contentWindow?.postMessage({ type: "overlay:init", params: step.params || {} }, "*");
+      tick();
+    });
+    this._overlay = o;
+    this.playerScreen.classList.add("has-overlay");
+  }
+
+  hideOverlayGame() {
+    const o = this._overlay;
+    this._overlay = null;
+    this.playerScreen.classList.remove("has-overlay");
+    if (!o) return;
+    cancelAnimationFrame(o.raf);
+    window.removeEventListener("message", o.onMessage);
+    o.frame.src = "about:blank";
+    o.frame.remove();
   }
 
   hideActionButton() {

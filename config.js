@@ -1,15 +1,23 @@
 // =============================================================
-//  config.js — everything you'd normally tweak lives here.
-//  To add an episode: add an object to `episodes`. To change the
-//  order of videos and games: reorder its `steps`.
+//  config.js — game-wide settings.
+//
+//  The story itself (episodes, scenes, branches, endings) lives in
+//  story.json. Edit it with the Studio (studio.html) rather than by hand.
+//  STORY.md explains the format if you ever do want to hand-edit.
 // =============================================================
 
 export const CONFIG = {
   title: "Episode Night",          // shown on the main menu
 
+  // The story file the game loads at startup.
+  storyFile: "story.json",
+
   // Where the MP4s live. Keep "videos/" while they're in the repo/app.
   // Later, point this at a CDN (e.g. "https://media.example.com/show/").
   videoBase: "videos/",
+
+  // Where standalone HTML minigames and overlay games live.
+  htmlGameBase: "minigames/html/",
 
   // On an episode the player has ALREADY beaten, show "Skip" buttons
   // for videos and minigames. First playthroughs never get skip buttons.
@@ -19,70 +27,6 @@ export const CONFIG = {
   // 0 = always wait for a tap (safest for sound on iPhone, see README).
   winScreenAutoContinueMs: 0,
 
-  // -----------------------------------------------------------
-  //  Episodes play in this order. Each one unlocks after the
-  //  previous one is beaten. `thumb` is optional.
-  //
-  //  Step types:
-  //    { type: "video", src: "file.mp4" }
-  //    { type: "game",  game: "popBalloons", params: { ... } }
-  //    { type: "game",  html: "my-game.html" }   (file in minigames/html/)
-  //    { type: "video", src: "file.mp4", loop: true, button: { label: "PUNCH!",
-  //        appearAt: 1, flashEvery: 2 } }
-  //        → clip repeats until the button is tapped, then the episode moves on
-  //          (add timeLimit: 6 and onMiss: "branchName" to branch if it isn't)
-  //
-  //  Branching (choose-your-own-adventure):
-  //    onMiss / onTap on a button step, onWin / onLose on a game step,
-  //    each naming one of the episode's `branches`. A branch's steps play
-  //    next; give it `ending: "Name"` to count it as an ending.
-  // -----------------------------------------------------------
-  episodes: [
-    {
-      id: "ep1",
-      title: "Bear vs Seagull",
-      thumb: "videos/bvs_thumb.jpg",
-      steps: [
-        { type: "video", src: "bvs_1.mp4" },   // Bear and Fox at the bar; the door bangs open
-        { type: "video", src: "bvs_2.mp4" },   // the Seagull starts yelling
-        { type: "video", src: "bvs_3.mp4" },   // Bear and Fox laugh at him
-        // The Seagull close-up loops (he keeps squawking). PUNCH! appears 1s in
-        // and flashes every 2s. Tap it within 6s to fight; miss it and he leaves.
-        { type: "video", src: "bvs_4.mp4", loop: true,
-          button: { label: "PUNCH!", appearAt: 1, flashEvery: 2, timeLimit: 6 },
-          onMiss: "birdLeaves" },
-        { type: "game",  html: "bear-vs-seagull.html", title: "Bear vs Seagull",
-          onWin: "bearWins", onLose: "birdWins" },
-      ],
-      // Where the story can go. Each of these is an ending.
-      branches: {
-        bearWins:   { ending: "Bear Saves the Bar",   steps: [{ type: "video", src: "bvs_end_bearwins.mp4" }] },
-        birdWins:   { ending: "The Seagull Wins",     steps: [{ type: "video", src: "bvs_end_gullwins.mp4" }] },
-        birdLeaves: { ending: "The Seagull Walks Out", steps: [{ type: "video", src: "bvs_end_leave.mp4" }] },
-      },
-    },
-    // Episodes 2 and 3 are still placeholders. Swap in real videos and games.
-    {
-      id: "ep2",
-      title: "Lost and Found",
-      thumb: "videos/ep2_thumb.jpg",
-      steps: [
-        { type: "video", src: "ep2_intro.mp4" },
-        { type: "game",  game: "matchPairs", params: { pairs: 3 } },
-        { type: "video", src: "ep2_middle.mp4" },
-        { type: "game",  game: "popBalloons", params: { count: 10, speed: 1.4 } },
-        { type: "video", src: "ep2_ending.mp4" },
-      ],
-    },
-    {
-      id: "ep3",
-      title: "Night Lights",
-      thumb: "videos/ep3_thumb.jpg",
-      steps: [
-        { type: "video", src: "ep3_intro.mp4" },
-        { type: "game",  game: "matchPairs", params: { pairs: 4 } },
-        { type: "video", src: "ep3_ending.mp4" },
-      ],
-    },
-  ],
+  // Filled in from story.json when the game starts.
+  episodes: [],
 };

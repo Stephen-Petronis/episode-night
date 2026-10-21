@@ -23,13 +23,16 @@ async function writeRaw(value) {
 }
 
 export class Progress {
-  constructor(episodes) {
+  // { memory: true } keeps progress in memory only (Studio playtests).
+  constructor(episodes, { memory = false } = {}) {
     this.episodes = episodes;
+    this.memory = memory;
     this.beaten = new Set();
     this.endings = {};          // { ep1: ["bearWins", "birdLeaves"], ... }
   }
 
   async load() {
+    if (this.memory) return;
     try {
       const data = JSON.parse((await readRaw()) || "{}");
       this.beaten = new Set(data.beaten || []);
@@ -41,6 +44,7 @@ export class Progress {
   }
 
   async save() {
+    if (this.memory) return;
     await writeRaw(JSON.stringify({ beaten: [...this.beaten], endings: this.endings }));
   }
 

@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Tap the Targets</title>
+<!--
+  See-through overlay game: glowing targets pop up over the playing video.
+  Tap enough of them before time runs out.
+
+  Params (set per scene in the Studio):
+    count    how many targets to hit to win          (default 5)
+    time     seconds of video time allowed           (default 8)
+    startAt  clip time (s) when the first target shows (default 0.5)
+    label    word that pops when you hit one         (default "BOP!")
+    life     seconds each target stays up            (default 1.4)
+
+  The clock is the VIDEO's clock, so pausing the video pauses the game.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@800&display=swap">
+<style>
+  :root {
+    --hit: #ffc93c;
+    --ring: #ff6b5a;
+    --ink: #f7f2ff;
+    --shade: rgba(12, 9, 28, 0.62);
+    --display: "Baloo 2", ui-rounded, system-ui, sans-serif;
+  }
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+  body { font-family: var(--display); color: var(--ink); -webkit-user-select: none; user-select: none; touch-action: none; }
+  #game { position: absolute; inset: 0; }
+
+  .hud {
+    position: absolute; left: 10px; right: 10px; top: 10px;
+    display: flex; align-items: center; gap: 10px;
+    pointer-events: none;
+  }
+  .count {
+    flex: none; padding: 2px 12px; border-radius: 999px;
+    background: var(--shade); font-size: 20px; line-height: 1.4; font-variant-numeric: tabular-nums;
+  }
+  .count b { color: var(--hit); }
+  .clock { flex: 1; height: 8px; border-radius: 4px; background: var(--shade); overflow: hidden; }
+  .clock span { display: block; height: 100%; width: 100%; background: var(--hit); transition: width .1s linear; }
+  .clock.low span { background: var(--ring); }
+
+  .target {
+    position: absolute; width: 21%; aspect-ratio: 1; padding: 0; border: 0;
+    transform: translate(-50%, -50%) scale(0.2); opacity: 0;
+    border-radius: 50%; background: radial-gradient(circle, rgba(255,201,60,.9) 0 18%, rgba(255,107,90,.25) 19% 46%, transparent 47%);
+    box-shadow: 0 0 0 4px var(--ring), 0 0 0 9px rgba(255,107,90,.35), 0 0 28px rgba(255,107,90,.7);
+    animation: pop-in .22s cubic-bezier(.2,1.6,.4,1) forwards, pulse .7s ease-in-out .22s infinite alternate;
+    cursor: pointer;
+  }
+  .target.fade { animation: fade-out .25s ease-in forwards; pointer-events: none; }
+  @keyframes pop-in { to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+  @keyframes pulse { to { transform: translate(-50%, -50%) scale(1.08); } }
+  @keyframes fade-out { from { transform: translate(-50%, -50%) scale(1); opacity: 1; } to { transform: translate(-50%, -50%) scale(.4); opacity: 0; } }
+
+  .pop {
+    position: absolute; transform: translate(-50%, -50%); pointer-events: none;
+    font-size: clamp(26px, 9vw, 40px); color: var(--hit);
+    text-shadow: 0 3px 0 #000, 0 0 12px rgba(0,0,0,.6);
+    animation: rise .6s ease-out forwards;
+  }
+  @keyframes rise { to { transform: translate(-50%, -150%) scale(1.2); opacity: 0; } }
+
+  .banner {
+    position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%);
+    padding: 6px 22px; border-radius: 16px; background: var(--shade);
+    font-size: clamp(30px, 11vw, 52px); white-space: nowrap; pointer-events: none;
+    animation: pop-in-b .3s cubic-bezier(.2,1.6,.4,1);
+  }
+  @keyframes pop-in-b { from { transform: translate(-50%, -50%) scale(.3); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .target, .pop, .banner { animation-duration: .01ms !important; } }
+</style>
+
+<div id="game">
+  <div class="hud">
+    <span class="count"><b id="got">0</b> / <span id="need">5</span></span>
+    <span class="clock" id="clock"><span id="clockFill"></span></span>
+  </div>
+</div>
+
+<script>
+  const P = { count: 5, time: 8, startAt: 0.5, label: "BOP!", life: 1.4 };
+  const game = document.getElementById("game");
+  const $ = id => document.getElementById(id);
+
+  let started = false, over = false, got = 0;
+  let elapsed = 0, lastT = null, nextSpawn = 0;
+  let target = null;
+
+  function readParams(obj) {
+    for (const k of Object.keys(P)) if (obj[k] != null && obj[k] !== "") P[k] = typeof P[k] === "number" ? Number(obj[k]) : String(obj[k]);
+    $("need").textContent = P.count;
+  }
+  readParams(Object.fromEntries(new URLSearchParams(location.search)));   // works standalone too
+
+  function finish(result) {
+    if (over) return;
+    over = true;
+    if (target) { target.el.remove(); target = null; }
+    const b = document.createElement("div");
+    b.className = "banner";
+    b.textContent = result === "win" ? "NICE!" : "TOO SLOW!";
+    game.appendChild(b);
+    setTimeout(() => parent.postMessage({ type: "minigame-complete", result }, "*"), 700);
+  }
+
+  function spawn() {
+    const el = document.createElement("button");
+    el.className = "target";
+    el.setAttribute("aria-label", "Target");
+    const x = 18 + Math.random() * 64, y = 24 + Math.random() * 56;
+    el.style.left = x + "%"; el.style.top = y + "%";
+    const t = { el, x, y, age: 0 };
+    el.addEventListener("pointerdown", e => { e.preventDefault(); hit(t); });
+    game.appendChild(el);
+    target = t;
+  }
+
+  function hit(t) {
+    if (over || target !== t) return;
+    target = null;
+    t.el.classList.add("fade");
+    setTimeout(() => t.el.remove(), 250);
+    const p = document.createElement("div");
+    p.className = "pop"; p.textContent = P.label;
+    p.style.left = t.x + "%"; p.style.top = t.y + "%";
+    game.appendChild(p);
+    setTimeout(() => p.remove(), 600);
+    got++;
+    $("got").textContent = got;
+    nextSpawn = 0.25;
+    if (got >= P.count) finish("win");
+  }
+
+  // Everything advances on the VIDEO's clock.
+  function onVideoTime({ t, duration, paused }) {
+    if (over) return;
+    if (lastT == null) { lastT = t; return; }
+    let dt = t - lastT;
+    if (dt < 0 && duration) dt += duration;          // looped
+    lastT = t;
+    if (paused || dt <= 0 || dt > 0.5) return;
+    if (!started) { if (t < P.startAt) return; started = true; }
+
+    elapsed += dt;
+    const left = Math.max(0, 1 - elapsed / P.time);
+    $("clockFill").style.width = (left * 100) + "%";
+    $("clock").classList.toggle("low", left < 0.3);
+    if (left <= 0) { finish("lose"); return; }
+
+    if (target) {
+      target.age += dt;
+      if (target.age > P.life) {
+        const old = target; target = null;
+        old.el.classList.add("fade"); setTimeout(() => old.el.remove(), 250);
+        nextSpawn = 0.15;
+      }
+    } else if ((nextSpawn -= dt) <= 0) spawn();
+  }
+
+  addEventListener("message", e => {
+    const d = e.data || {};
+    if (d.type === "overlay:init") readParams(d.params || {});
+    if (d.type === "video-time") onVideoTime(d);
+  });
+
+  // Opened on its own (no video feeding time), run on the wall clock.
+  if (parent === window) {
+    let t0 = performance.now();
+    (function run(now) {
+      onVideoTime({ t: (now - t0) / 1000, duration: 0, paused: false });
+      if (!over) requestAnimationFrame(run);
+    })(t0);
+  }
+</script>
