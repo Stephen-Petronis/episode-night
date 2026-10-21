@@ -41,20 +41,21 @@ ui.showMenu();
 // from a scene; the game reports which scene is on screen.
 if (studio) {
   const studioWin = window.parent;
-  const useStory = s => {
+  const useStory = (s, bust) => {
     CONFIG.episodes = s.episodes || [];
     progress.episodes = CONFIG.episodes;
+    player.query = bust ? `?v=${bust}` : "";
   };
   engine.onStep = (ep, origin) => studioWin.postMessage({ type: "studio:step", episodeId: ep.id, ...origin }, "*");
   window.addEventListener("message", e => {
     if (e.source !== studioWin) return;
     const d = e.data || {};
     if (d.type === "studio:story") {
-      useStory(d.story);
+      useStory(d.story, d.bust);
       if (!engine.run) ui.showMenu();
     }
     if (d.type === "studio:play") {
-      useStory(d.story);
+      useStory(d.story, d.bust);
       engine.exit();
       const ep = CONFIG.episodes.find(x => x.id === d.episodeId);
       if (ep) engine.start(ep, { dev: true, from: d.from });

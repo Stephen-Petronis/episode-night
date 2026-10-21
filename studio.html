@@ -1,0 +1,1523 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Episode Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&display=swap">
+<!--
+  Episode Studio — an interactive storyboard for Episode Night.
+
+  Run the project locally (python3 -m http.server 8000) and open
+  http://localhost:8000/studio.html in Chrome. Click "Open project folder"
+  and pick this folder: the Studio reads story.json, the videos and the
+  HTML games, and saves every change straight back to story.json.
+
+  Everything is in this one file.
+-->
+<style>
+/* Layout: an editing desk. Episodes on the left, the storyboard (one column
+   per path, splitting where the story branches) in the middle, the scene
+   inspector / phone playtest on the right. Night palette shared with the game. */
+:root {
+  --ground:  #120f24;   /* desk */
+  --panel:   #1b1636;   /* side panels */
+  --card:    #241d4a;   /* scene cards */
+  --raise:   #2f2760;   /* inputs, hovers */
+  --line:    rgba(235, 228, 255, 0.10);
+  --line-2:  rgba(235, 228, 255, 0.22);
+  --ink:     #f3eeff;
+  --muted:   #a59cc9;
+  --dim:     #6f6796;
+  --marquee: #ffc93c;   /* accent, selection, game scenes */
+  --coral:   #ff6b5a;   /* button scenes */
+  --mint:    #6fe2b4;   /* overlay scenes, endings */
+  --sky:     #7cb6ff;   /* plain clips */
+  --warn:    #ffb347;
+  --bad:     #ff6b7a;
+  --display: "Baloo 2", ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+  --ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--ground); color: var(--ink);
+  font: 14px/1.4 var(--ui);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--marquee); outline-offset: 2px; }
+svg { display: block; }
+
+/* ---------- App frame ---------- */
+.app { height: 100%; display: grid; grid-template-rows: auto 1fr; }
+.topbar {
+  display: flex; align-items: center; gap: 14px;
+  padding: 10px 16px; border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+.brand { display: flex; align-items: baseline; gap: 8px; margin-right: 6px; }
+.brand b { font-family: var(--display); font-size: 22px; line-height: 1; }
+.brand span { color: var(--muted); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; }
+.folder { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: 13px; }
+.folder strong { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+.spacer { flex: 1; }
+.status { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.status i { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
+.status.saved i { background: var(--mint); }
+.status.saving i { background: var(--marquee); }
+.status.unsaved i { background: var(--warn); }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 32px; padding: 0 12px; border-radius: 8px;
+  border: 1px solid var(--line-2); background: var(--raise); color: var(--ink);
+  font-weight: 600; font-size: 13px; white-space: nowrap;
+}
+.btn:hover { border-color: var(--muted); }
+.btn:disabled { opacity: .4; cursor: default; }
+.btn svg { width: 16px; height: 16px; }
+.btn.primary { background: var(--marquee); border-color: var(--marquee); color: #1b1636; }
+.btn.ghost { background: transparent; }
+.btn.danger { color: var(--bad); }
+.btn.sm { height: 26px; padding: 0 8px; font-size: 12px; border-radius: 6px; }
+.icon-btn { width: 32px; padding: 0; }
+.icon-btn.sm { width: 26px; }
+
+.main { min-height: 0; display: grid; grid-template-columns: 230px minmax(0, 1fr) 380px; }
+
+/* ---------- Episodes ---------- */
+.episodes { border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+.pane-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 14px 8px; }
+.pane-head h2 { margin: 0; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.ep-list { flex: 1; overflow: auto; padding: 4px 8px 12px; display: flex; flex-direction: column; gap: 4px; }
+.ep-item {
+  display: grid; grid-template-columns: 40px 1fr; gap: 10px; align-items: center;
+  padding: 6px; border-radius: 10px; border: 1px solid transparent; background: none; text-align: left;
+}
+.ep-item:hover { background: var(--card); }
+.ep-item.on { background: var(--card); border-color: var(--marquee); }
+.ep-thumb { width: 40px; aspect-ratio: 4/5; border-radius: 6px; background: var(--raise) center/cover; position: relative; overflow: hidden; }
+.ep-thumb b { position: absolute; left: 4px; bottom: 0; font: 800 18px/1 var(--display); text-shadow: 0 2px 0 rgba(0,0,0,.4); }
+.ep-item .t { font-weight: 700; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ep-item .s { color: var(--muted); font-size: 12px; }
+
+/* ---------- Storyboard ---------- */
+.board { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.board-head { display: flex; align-items: center; gap: 12px; padding: 14px 20px 10px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.board-title { min-width: 0; flex: 1; display: flex; align-items: baseline; gap: 10px; }
+.board-title h1 { margin: 0; font: 800 26px/1.1 var(--display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.board-title button { background: none; border: 0; padding: 0; color: var(--muted); font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }
+.counts { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.counts b { color: var(--ink); }
+
+.warn-bar { margin: 10px 20px 0; border: 1px solid rgba(255,179,71,.35); background: rgba(255,179,71,.08); border-radius: 10px; }
+.warn-bar summary { cursor: pointer; padding: 8px 12px; color: var(--warn); font-weight: 700; font-size: 13px; }
+.warn-bar ul { margin: 0; padding: 0 12px 10px 30px; display: grid; gap: 4px; font-size: 13px; }
+.warn-bar li button { background: none; border: 0; padding: 0; text-align: left; color: var(--ink); }
+.warn-bar li button:hover { text-decoration: underline; }
+
+.canvas { flex: 1; overflow: auto; padding: 22px 20px 80px; }
+.lane { display: flex; flex-direction: column; align-items: center; min-width: 236px; }
+.lane-head {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  margin-bottom: 4px; max-width: 236px; text-align: center;
+}
+.outcome-tag { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.branch-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--panel);
+  font-weight: 700; font-size: 13px; max-width: 100%;
+}
+.branch-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.branch-chip:hover { border-color: var(--muted); }
+.branch-chip.on { border-color: var(--marquee); }
+.branch-chip.ending { border-color: rgba(111,226,180,.5); }
+.branch-chip svg { width: 13px; height: 13px; flex: none; }
+
+.stem { width: 2px; height: 14px; background: var(--line-2); }
+.insert {
+  width: 28px; height: 22px; border-radius: 999px; border: 1px dashed var(--line-2); background: var(--ground);
+  color: var(--dim); display: grid; place-items: center; padding: 0; opacity: .0; transition: opacity .15s;
+}
+.lane:hover > .insert, .insert:focus-visible { opacity: 1; }
+.insert:hover { color: var(--marquee); border-color: var(--marquee); }
+.insert svg { width: 14px; height: 14px; }
+
+.scene {
+  position: relative; width: 236px; display: grid; grid-template-columns: 64px 1fr; gap: 10px;
+  padding: 8px; border-radius: 12px; background: var(--card); border: 1px solid var(--line);
+  text-align: left; --k: var(--sky);
+}
+.scene:hover { border-color: var(--line-2); }
+.scene.on { border-color: var(--marquee); box-shadow: 0 0 0 3px rgba(255,201,60,.18); }
+.scene.playing::after {
+  content: "PLAYING"; position: absolute; top: -9px; right: 10px;
+  padding: 1px 7px; border-radius: 999px; background: var(--mint); color: #102a20;
+  font-size: 10px; font-weight: 800; letter-spacing: .1em;
+}
+.scene.k-button { --k: var(--coral); }
+.scene.k-overlay { --k: var(--mint); }
+.scene.k-game { --k: var(--marquee); }
+.scene .frame {
+  position: relative; width: 64px; aspect-ratio: 4/5; border-radius: 7px; overflow: hidden;
+  background: var(--raise); box-shadow: inset 0 0 0 2px var(--k);
+}
+.scene .frame video, .scene .frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.scene .frame .ph { position: absolute; inset: 0; display: grid; place-items: center; color: var(--k); }
+.scene .frame .ph svg { width: 26px; height: 26px; }
+.scene .frame .loop { position: absolute; right: 3px; bottom: 3px; width: 16px; height: 16px; border-radius: 50%; background: rgba(0,0,0,.65); display: grid; place-items: center; }
+.scene .frame .loop svg { width: 11px; height: 11px; }
+.scene .info { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.kind { font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--k); }
+.scene .name { font-weight: 700; font-size: 13px; overflow-wrap: anywhere; }
+.scene .name.missing { color: var(--bad); }
+.scene .sub { color: var(--muted); font-size: 12px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.scene .flag { position: absolute; left: -8px; top: 8px; width: 16px; height: 16px; border-radius: 50%; background: var(--warn); color: #241d4a; font-weight: 900; font-size: 11px; display: grid; place-items: center; }
+
+.lane-end { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.add-scene { border-style: dashed; background: transparent; color: var(--muted); }
+.end-mark {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 8px;
+  font-size: 12px; font-weight: 700; color: var(--muted); border: 1px solid var(--line);
+}
+.end-mark.ending { color: var(--mint); border-color: rgba(111,226,180,.45); background: rgba(111,226,180,.07); }
+.end-mark svg { width: 14px; height: 14px; }
+.jump { font-size: 12px; color: var(--muted); padding: 6px 10px; border: 1px dashed var(--line-2); border-radius: 8px; }
+.jump button { background: none; border: 0; padding: 0; color: var(--ink); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+
+/* A fork: the stem splits into side-by-side columns */
+.fork { display: flex; flex-direction: column; align-items: center; }
+.fork-cols { display: flex; gap: 22px; align-items: flex-start; position: relative; padding-top: 14px; }
+.fork-cols::before {
+  content: ""; position: absolute; top: 0; height: 2px; background: var(--line-2);
+  left: calc(var(--first, 118px)); right: calc(var(--last, 118px));
+}
+.fork-cols > .lane { position: relative; }
+.fork-cols > .lane::before { content: ""; position: absolute; top: -14px; left: 50%; width: 2px; height: 14px; background: var(--line-2); }
+
+.orphans { margin-top: 40px; padding-top: 16px; border-top: 1px dashed var(--line-2); }
+.orphans h3 { margin: 0 0 12px; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--warn); }
+.orphans .fork-cols { padding-top: 0; }
+.orphans .fork-cols::before, .orphans .fork-cols > .lane::before { display: none; }
+
+.empty-board { max-width: 420px; margin: 60px auto; text-align: center; color: var(--muted); }
+.empty-board h2 { font: 800 26px/1.15 var(--display); color: var(--ink); margin: 0 0 8px; }
+
+/* ---------- Right panel ---------- */
+.side { border-left: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+.tabs { display: flex; gap: 4px; padding: 10px 10px 0; border-bottom: 1px solid var(--line); }
+.tab {
+  flex: 1; height: 36px; border: 0; background: none; color: var(--muted); font-weight: 700;
+  border-bottom: 2px solid transparent; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+}
+.tab svg { width: 16px; height: 16px; }
+.tab.on { color: var(--ink); border-bottom-color: var(--marquee); }
+.inspector { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+.inspector h3 { margin: 0; font: 800 20px/1.15 var(--display); }
+.insp-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.insp-head .where { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.group { display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); }
+.group > h4 { margin: 0; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field > label, .field > .lbl { font-size: 12px; font-weight: 700; color: var(--muted); }
+.field .hint { font-size: 12px; color: var(--dim); }
+.row { display: flex; gap: 8px; align-items: center; }
+.row > * { min-width: 0; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+input[type=text], input[type=number], select, textarea {
+  width: 100%; height: 34px; padding: 0 10px; border-radius: 8px;
+  border: 1px solid var(--line-2); background: var(--ground); color: var(--ink);
+}
+textarea { height: auto; min-height: 54px; padding: 8px 10px; resize: vertical; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--marquee); }
+.check { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.check input { width: 16px; height: 16px; accent-color: var(--marquee); }
+
+.kinds { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.kind-opt {
+  display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 10px; text-align: left;
+  border: 1px solid var(--line-2); background: var(--ground);
+}
+.kind-opt b { font-size: 13px; }
+.kind-opt span { font-size: 11px; color: var(--muted); }
+.kind-opt.on { border-color: var(--k); box-shadow: inset 0 0 0 1px var(--k); }
+.kind-opt.k-clip { --k: var(--sky); } .kind-opt.k-button { --k: var(--coral); }
+.kind-opt.k-overlay { --k: var(--mint); } .kind-opt.k-game { --k: var(--marquee); }
+
+.clip-preview { width: 150px; aspect-ratio: 4/5; border-radius: 10px; overflow: hidden; background: #000; flex: none; }
+.clip-preview video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.clip-meta { font-size: 12px; color: var(--muted); display: grid; gap: 2px; font-variant-numeric: tabular-nums; }
+.clip-meta .bad { color: var(--warn); }
+
+.outcome { display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-items: center; }
+.outcome > span { font-size: 13px; font-weight: 700; }
+.newbranch { display: flex; gap: 6px; margin-top: 6px; }
+
+.params .prow { display: grid; grid-template-columns: 1fr 1fr 26px; gap: 6px; }
+.actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.confirm { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: rgba(255,107,122,.1); border: 1px solid rgba(255,107,122,.35); font-size: 13px; }
+
+/* Playtest */
+.playtest { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 14px; align-items: center; }
+.phone-wrap { flex: 1; min-height: 0; width: 100%; display: grid; place-items: center; container-type: size; }
+.phone {
+  width: min(100cqw, 100cqh * 390 / 844); aspect-ratio: 390 / 844; max-width: 100%;
+  border-radius: 34px; padding: 10px; background: #08060f; box-shadow: 0 0 0 1px var(--line-2), 0 20px 50px rgba(0,0,0,.5);
+}
+.phone-screen { width: 100%; height: 100%; border-radius: 26px; overflow: hidden; position: relative; background: #000; }
+.phone-screen iframe { position: absolute; left: 0; top: 0; width: 390px; height: 844px; border: 0; transform-origin: 0 0; }
+.pt-bar { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.pt-note { font-size: 12px; color: var(--dim); text-align: center; max-width: 300px; }
+
+/* Welcome */
+.welcome { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgba(10,8,22,.82); backdrop-filter: blur(6px); padding: 16px; }
+.welcome-card { width: min(560px, 100%); background: var(--panel); border: 1px solid var(--line-2); border-radius: 18px; padding: 26px; display: flex; flex-direction: column; gap: 14px; }
+.welcome-card h2 { margin: 0; font: 800 30px/1.1 var(--display); }
+.welcome-card p { margin: 0; color: var(--muted); line-height: 1.5; }
+.welcome-card ol { margin: 0; padding-left: 20px; color: var(--muted); line-height: 1.6; }
+.welcome-card code { font-family: var(--mono); font-size: 12px; background: var(--ground); padding: 2px 6px; border-radius: 5px; color: var(--ink); }
+.welcome-card .row { flex-wrap: wrap; }
+
+.toast {
+  position: fixed; left: 50%; bottom: 20px; transform: translate(-50%, 20px); opacity: 0;
+  padding: 10px 16px; border-radius: 10px; background: var(--ink); color: var(--ground); font-weight: 700;
+  transition: all .2s; pointer-events: none; z-index: 60;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+@media (max-width: 1100px) { .main { grid-template-columns: 190px minmax(0, 1fr) 330px; } }
+@media (max-width: 860px) {
+  body { overflow: auto; }
+  .app { height: auto; }
+  .main { grid-template-columns: 1fr; }
+  .episodes, .side { border: 0; border-bottom: 1px solid var(--line); }
+  .side { min-height: 640px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand"><b>Episode Studio</b><span>Storyboard</span></div>
+    <div class="folder" id="folder"></div>
+    <div class="spacer"></div>
+    <button class="btn ghost icon-btn" id="undo" title="Undo (Ctrl+Z)" aria-label="Undo"></button>
+    <button class="btn ghost icon-btn" id="redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"></button>
+    <span class="status" id="status"><i></i><span></span></span>
+    <button class="btn" id="download" hidden>Download story.json</button>
+  </header>
+
+  <div class="main">
+    <aside class="episodes">
+      <div class="pane-head"><h2>Episodes</h2><button class="btn sm" id="add-ep">+ New</button></div>
+      <div class="ep-list" id="ep-list"></div>
+    </aside>
+
+    <section class="board">
+      <div class="board-head" id="board-head"></div>
+      <div id="warnings"></div>
+      <div class="canvas" id="canvas"></div>
+    </section>
+
+    <aside class="side">
+      <div class="tabs" role="tablist">
+        <button class="tab on" id="tab-scene" role="tab"></button>
+        <button class="tab" id="tab-play" role="tab"></button>
+      </div>
+      <div class="inspector" id="inspector"></div>
+      <div class="playtest" id="playtest" hidden>
+        <div class="pt-bar">
+          <button class="btn sm" id="pt-start">Play episode from start</button>
+          <button class="btn sm" id="pt-scene">Play selected scene</button>
+          <button class="btn sm ghost" id="pt-menu">Game menu</button>
+        </div>
+        <div class="phone-wrap"><div class="phone"><div class="phone-screen" id="phone-screen">
+          <iframe id="game-frame" title="Playtest" allow="autoplay"></iframe>
+        </div></div></div>
+        <p class="pt-note">Plays your latest edits, saved or not. Progress here is separate from the real game.</p>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div class="welcome" id="welcome" hidden></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<input type="file" id="file-in" hidden>
+
+<script>
+/* =====================================================================
+   Icons
+   ===================================================================== */
+const I = {
+  undo: '<svg viewBox="0 0 24 24"><path d="M9 7 4 12l5 5M4 12h11a5 5 0 0 1 0 10h-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  redo: '<svg viewBox="0 0 24 24"><path d="m15 7 5 5-5 5m5-5H9a5 5 0 0 0 0 10h2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',
+  film: '<svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 3v18M16 3v18M4 8h4M4 12h4M4 16h4M16 8h4M16 12h4M16 16h4" stroke="currentColor" stroke-width="1.5"/></svg>',
+  star: '<svg viewBox="0 0 24 24"><path d="m12 2.8 2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.2l-5.7 3.1 1.2-6.4-4.7-4.4 6.4-.8z" fill="currentColor"/></svg>',
+  loop: '<svg viewBox="0 0 24 24"><path d="M17 2l3 3-3 3M4 11V9a4 4 0 0 1 4-4h12M7 22l-3-3 3-3m13-3v2a4 4 0 0 1-4 4H4" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  flag: '<svg viewBox="0 0 24 24"><path d="M5 21V4m0 0h11l-2 4 2 4H5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  branch: '<svg viewBox="0 0 24 24"><path d="M6 3v12a4 4 0 0 0 4 4h8m0 0-3-3m3 3-3 3M6 9h6a4 4 0 0 1 4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  edit: '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
+  phone: '<svg viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M11 18h2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  play: '<svg viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" fill="currentColor"/></svg>',
+  up: '<svg viewBox="0 0 24 24"><path d="m6 14 6-6 6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  down: '<svg viewBox="0 0 24 24"><path d="m6 10 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
+  folder: '<svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
+  game: '<svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="11" rx="5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 10.5v4M5 12.5h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="16" cy="11.5" r="1.3" fill="currentColor"/><circle cx="18" cy="14" r="1.3" fill="currentColor"/></svg>',
+  tap: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/></svg>',
+};
+
+/* =====================================================================
+   State
+   ===================================================================== */
+const S = {
+  story: { version: 1, episodes: [] },
+  epId: null,
+  sel: null,                 // { kind: "scene", lane, index } | { kind: "branch", lane } | { kind: "episode" }
+  tab: "scene",
+  root: null,                // FileSystemDirectoryHandle of the project
+  files: { videos: [], images: [], html: [] },   // names on disk (folder mode)
+  meta: {},                  // "videos/x.mp4" -> { w, h, dur, size }
+  urls: {},                  // cached object URLs for folder files
+  saveState: "none",         // none | saved | saving | unsaved
+  undo: [], redo: [],
+  playing: null,             // { episodeId, lane, index } from the playtest
+  bust: 0,                   // bumps when a file is replaced so previews reload
+  confirm: null,             // pending delete confirm key
+  newBranchFor: null,        // outcome key waiting for a new branch name
+};
+
+const BUILTIN_GAMES = { popBalloons: "Pop the Balloons", matchPairs: "Match the Pairs" };
+const OUTCOME_LABEL = { onTap: "Tapped", onMiss: "Missed", onWin: "Won", onLose: "Lost" };
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const clone = o => JSON.parse(JSON.stringify(o));
+
+function toast(msg) {
+  const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+/* =====================================================================
+   Story helpers
+   ===================================================================== */
+const ep = () => S.story.episodes.find(e => e.id === S.epId);
+const laneSteps = (e, lane) => lane === "main" ? e.steps : (e.branches?.[lane]?.steps);
+
+function kindOf(step) {
+  if (!step) return "clip";
+  if (step.type === "game") return "game";
+  if (step.overlay != null) return "overlay";
+  if (step.button) return "button";
+  return "clip";
+}
+const KIND = {
+  clip:    { label: "Clip",            desc: "Plays and moves on" },
+  button:  { label: "Clip + button",   desc: "Tap a button (loop / timer)" },
+  overlay: { label: "Clip + game",     desc: "See-through game on top" },
+  game:    { label: "Minigame",        desc: "Full-screen game" },
+};
+
+// Which outcomes a scene can have, in display order.
+function outcomeKeys(step) {
+  const k = kindOf(step);
+  if (k === "button") return step.button?.timeLimit > 0 ? ["onTap", "onMiss"] : ["onTap"];
+  if (k === "overlay") return step.loop ? ["onWin", "onLose"] : ["onWin", "onLose", "onMiss"];
+  if (k === "game") return ["onWin", "onLose"];
+  return [];
+}
+function outcomeLabel(step, key) {
+  const k = kindOf(step);
+  if (key === "onTap") return `Tapped ${step.button?.label || "button"}`;
+  if (key === "onMiss") return k === "overlay" ? "Clip ended" : "Ran out of time";
+  return OUTCOME_LABEL[key];
+}
+
+function sceneTitle(step) {
+  if (!step) return "";
+  if (step.type === "game") return step.html || BUILTIN_GAMES[step.game] || step.game || "Choose a game";
+  return step.src || "Choose a clip";
+}
+function sceneSub(step) {
+  const k = kindOf(step), bits = [];
+  if (k === "button") {
+    bits.push(`${step.button.label || "Button"}`);
+    if (step.button.timeLimit > 0) bits.push(`${step.button.timeLimit}s timer`);
+  }
+  if (k === "overlay") bits.push(step.overlay || "choose a game");
+  if (k === "game" && step.title) bits.push(step.title);
+  if (step.note) bits.push(step.note);
+  return bits.join(" · ");
+}
+
+function allLanes(e) { return ["main", ...Object.keys(e.branches || {})]; }
+
+function forEachStep(e, fn) {
+  for (const lane of allLanes(e)) (laneSteps(e, lane) || []).forEach((s, i) => fn(s, lane, i));
+}
+
+function slug(name) {
+  const words = String(name).trim().replace(/[^A-Za-z0-9 ]+/g, " ").split(/\s+/).filter(Boolean);
+  if (!words.length) return "";
+  return words.map((w, i) => i ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w.toLowerCase()).join("");
+}
+
+// Reachability: walk from the main lane through every outcome.
+function reachableBranches(e) {
+  const seen = new Set();
+  const walk = lane => {
+    for (const s of laneSteps(e, lane) || []) {
+      for (const k of ["onTap", "onMiss", "onWin", "onLose"]) {
+        const b = s[k];
+        if (b && e.branches?.[b] && !seen.has(b)) { seen.add(b); walk(b); }
+      }
+    }
+  };
+  walk("main");
+  return seen;
+}
+
+function endingCount(e) { return Object.values(e.branches || {}).filter(b => b.ending).length; }
+
+/* =====================================================================
+   Warnings
+   ===================================================================== */
+function warnings(e) {
+  if (!e) return [];
+  const out = [];
+  const folder = !!S.root;
+  const reach = reachableBranches(e);
+  forEachStep(e, (s, lane, index) => {
+    const at = { lane, index };
+    const k = kindOf(s);
+    if (s.type !== "game") {
+      if (!s.src) out.push({ at, msg: "Scene has no clip yet" });
+      else if (folder && !S.files.videos.includes(s.src)) out.push({ at, msg: `Clip file not found: ${s.src}` });
+      const m = S.meta["videos/" + s.src];
+      if (m && m.w && Math.abs(m.w / m.h - 0.8) > 0.03) out.push({ at, msg: `${s.src} is ${m.w}×${m.h}, not 4:5 (it will be cropped)` });
+    }
+    if (k === "overlay") {
+      if (!s.overlay) out.push({ at, msg: "Overlay scene has no game file" });
+      else if (folder && !S.files.html.includes(s.overlay)) out.push({ at, msg: `Game file not found: ${s.overlay}` });
+    }
+    if (k === "game") {
+      if (!s.html && !s.game) out.push({ at, msg: "Minigame scene has no game chosen" });
+      else if (s.html && folder && !S.files.html.includes(s.html)) out.push({ at, msg: `Game file not found: ${s.html}` });
+    }
+    for (const key of ["onTap", "onMiss", "onWin", "onLose"]) {
+      if (s[key] && !e.branches?.[s[key]]) out.push({ at, msg: `"${outcomeLabel(s, key)}" goes to a branch that doesn't exist (${s[key]})` });
+    }
+    // Every outcome here branches away, so later scenes in this column never play.
+    const keys = outcomeKeys(s);
+    const steps = laneSteps(e, lane);
+    if (keys.length && keys.every(key => s[key]) && index < steps.length - 1) {
+      out.push({ at: { lane, index: index + 1 }, msg: `${steps.length - index - 1} scene(s) after scene ${index + 1} can't be reached — every outcome of scene ${index + 1} goes to a branch` });
+    }
+  });
+  for (const [name, b] of Object.entries(e.branches || {})) {
+    if (!reach.has(name)) out.push({ at: { lane: name }, msg: `Branch "${name}" can't be reached — no scene leads to it` });
+    if (!(b.steps || []).length) out.push({ at: { lane: name }, msg: `Branch "${name}" has no scenes` });
+  }
+  if (!e.steps.length) out.push({ at: null, msg: "This episode has no scenes yet" });
+  return out;
+}
+
+/* =====================================================================
+   History + saving
+   ===================================================================== */
+let editTimer = null, editSnap = null;
+
+// Discrete change: snapshot now, then apply.
+function change(fn, { inspector = true } = {}) {
+  flushEdit();
+  S.undo.push(JSON.stringify(S.story)); if (S.undo.length > 200) S.undo.shift();
+  S.redo = [];
+  fn();
+  afterChange(inspector);
+}
+
+// Typing in a field: one undo step per burst of typing.
+function edit(fn) {
+  if (!editSnap) editSnap = JSON.stringify(S.story);
+  fn();
+  clearTimeout(editTimer);
+  editTimer = setTimeout(flushEdit, 700);
+  afterChange(false);
+}
+function flushEdit() {
+  clearTimeout(editTimer);
+  if (editSnap) { S.undo.push(editSnap); S.redo = []; editSnap = null; }
+}
+
+let quietTimer = null;
+function afterChange(inspector) {
+  if (inspector) {
+    clearTimeout(quietTimer);
+    renderEpisodes(); renderBoard(); renderSide();
+  } else {
+    // typing: redraw the board once the burst settles
+    clearTimeout(quietTimer);
+    quietTimer = setTimeout(() => { renderEpisodes(); renderBoard(); }, 250);
+  }
+  renderUndo();
+  scheduleSave();
+  sendStory();
+}
+
+function undo() {
+  flushEdit();
+  if (!S.undo.length) return;
+  S.redo.push(JSON.stringify(S.story));
+  S.story = JSON.parse(S.undo.pop());
+  fixSelection(); afterChange(true);
+}
+function redo() {
+  if (!S.redo.length) return;
+  S.undo.push(JSON.stringify(S.story));
+  S.story = JSON.parse(S.redo.pop());
+  fixSelection(); afterChange(true);
+}
+function renderUndo() {
+  $("#undo").disabled = !S.undo.length && !editSnap;
+  $("#redo").disabled = !S.redo.length;
+}
+
+function fixSelection() {
+  if (!ep()) S.epId = S.story.episodes[0]?.id || null;
+  const e = ep();
+  if (!e || !S.sel) return;
+  if (S.sel.kind === "scene" || S.sel.kind === "branch") {
+    const steps = laneSteps(e, S.sel.lane);
+    if (!steps) S.sel = null;
+    else if (S.sel.kind === "scene" && !steps[S.sel.index]) S.sel = steps.length ? { kind: "scene", lane: S.sel.lane, index: steps.length - 1 } : null;
+  }
+}
+
+let saveTimer = null;
+function scheduleSave() {
+  if (!S.root) { setStatus("unsaved"); return; }
+  setStatus("saving");
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(save, 500);
+}
+async function save() {
+  if (!S.root) return;
+  try {
+    const fh = await S.root.getFileHandle("story.json", { create: true });
+    const w = await fh.createWritable();
+    await w.write(JSON.stringify(S.story, null, 2) + "\n");
+    await w.close();
+    setStatus("saved");
+  } catch (err) {
+    console.error(err);
+    setStatus("unsaved");
+    toast("Couldn't save story.json. Check the folder permission.");
+  }
+}
+function setStatus(state) {
+  S.saveState = state;
+  const el = $("#status");
+  el.className = "status " + state;
+  el.querySelector("span").textContent =
+    state === "saved" ? "Saved to story.json" :
+    state === "saving" ? "Saving…" :
+    state === "unsaved" ? (S.root ? "Not saved" : "Not saved — no folder open") : "";
+  $("#download").hidden = !!S.root;
+}
+
+/* =====================================================================
+   Project folder (File System Access API)
+   ===================================================================== */
+const canOpenFolders = "showDirectoryPicker" in window;
+
+const idb = {
+  open() { return new Promise((res, rej) => { const r = indexedDB.open("episode-studio", 1); r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
+  async get(k) { try { const db = await this.open(); return await new Promise(res => { const t = db.transaction("kv").objectStore("kv").get(k); t.onsuccess = () => res(t.result); t.onerror = () => res(null); }); } catch { return null; } },
+  async set(k, v) { try { const db = await this.open(); db.transaction("kv", "readwrite").objectStore("kv").put(v, k); } catch {} },
+};
+
+async function openFolder(handle) {
+  try {
+    if (!handle) handle = await window.showDirectoryPicker({ id: "episode-night", mode: "readwrite" });
+    if ((await handle.queryPermission({ mode: "readwrite" })) !== "granted") {
+      if ((await handle.requestPermission({ mode: "readwrite" })) !== "granted") return;
+    }
+    let story;
+    try {
+      const f = await (await handle.getFileHandle("story.json")).getFile();
+      story = JSON.parse(await f.text());
+    } catch {
+      toast("No story.json in that folder — pick the Episode Night project folder.");
+      return;
+    }
+    S.root = handle;
+    idb.set("folder", handle);
+    S.story = story;
+    S.story.episodes ||= [];
+    S.undo = []; S.redo = [];
+    S.epId = S.story.episodes[0]?.id || null;
+    S.sel = null;
+    await scanFiles();
+    $("#welcome").hidden = true;
+    setStatus("saved");
+    renderAll();
+    sendStory();
+    toast(`Opened ${handle.name}`);
+  } catch (err) {
+    if (err?.name !== "AbortError") { console.error(err); toast("Couldn't open that folder."); }
+  }
+}
+
+async function dir(path, create = false) {
+  let d = S.root;
+  for (const part of path.split("/").filter(Boolean)) d = await d.getDirectoryHandle(part, { create });
+  return d;
+}
+async function listDir(path, exts) {
+  try {
+    const d = await dir(path); const out = [];
+    for await (const [name, h] of d.entries()) {
+      if (h.kind === "file" && exts.some(x => name.toLowerCase().endsWith(x)) && !name.startsWith("_") && !name.startsWith(".")) out.push(name);
+    }
+    return out.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  } catch { return []; }
+}
+async function scanFiles() {
+  if (!S.root) return;
+  S.files.videos = await listDir("videos", [".mp4", ".m4v", ".mov", ".webm"]);
+  S.files.images = await listDir("videos", [".jpg", ".jpeg", ".png", ".webp"]);
+  S.files.html = await listDir("minigames/html", [".html"]);
+}
+
+// URL to show a project file in the Studio (object URL in folder mode).
+async function fileURL(path) {
+  if (!S.root) return path + (S.bust ? `?v=${S.bust}` : "");
+  const key = path;
+  if (S.urls[key]) return S.urls[key];
+  try {
+    const parts = path.split("/"); const name = parts.pop();
+    const fh = await (await dir(parts.join("/"))).getFileHandle(name);
+    const f = await fh.getFile();
+    const types = { mp4: "video/mp4", m4v: "video/mp4", mov: "video/quicktime", webm: "video/webm", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
+    const type = f.type || types[name.split(".").pop().toLowerCase()] || "";
+    S.urls[key] = URL.createObjectURL(type && !f.type ? new Blob([f], { type }) : f);
+    S.meta[key] = { ...(S.meta[key] || {}), size: f.size };
+    return S.urls[key];
+  } catch { return ""; }
+}
+function forgetURL(path) { if (S.urls[path]) { URL.revokeObjectURL(S.urls[path]); delete S.urls[path]; } delete S.meta[path]; }
+
+// Copy a file the user picked into the project. Returns the saved name.
+async function importFile(file, folder, asName) {
+  const name = asName || file.name.replace(/[^\w.\-]+/g, "_");
+  const d = await dir(folder, true);
+  const fh = await d.getFileHandle(name, { create: true });
+  const w = await fh.createWritable(); await w.write(file); await w.close();
+  forgetURL(`${folder}/${name}`);
+  S.bust++;
+  await scanFiles();
+  return name;
+}
+
+function pickFile(accept) {
+  return new Promise(res => {
+    const inp = $("#file-in");
+    inp.value = ""; inp.accept = accept;
+    inp.onchange = () => res(inp.files[0] || null);
+    inp.click();
+  });
+}
+
+/* =====================================================================
+   Rendering — episodes list
+   ===================================================================== */
+function renderEpisodes() {
+  const list = $("#ep-list");
+  list.innerHTML = S.story.episodes.map((e, i) => {
+    const scenes = e.steps.length + Object.values(e.branches || {}).reduce((n, b) => n + (b.steps || []).length, 0);
+    const ends = endingCount(e);
+    return `<button class="ep-item ${e.id === S.epId ? "on" : ""}" data-ep="${esc(e.id)}">
+      <span class="ep-thumb" data-thumb="${esc(e.thumb || "")}"><b>${i + 1}</b></span>
+      <span><span class="t">${esc(e.title || "Untitled")}</span><span class="s">${scenes} scene${scenes === 1 ? "" : "s"}${ends ? ` · ${ends} ending${ends === 1 ? "" : "s"}` : ""}</span></span>
+    </button>`;
+  }).join("") || `<p style="color:var(--muted);padding:8px">No episodes yet.</p>`;
+  list.querySelectorAll("[data-thumb]").forEach(async el => {
+    const t = el.dataset.thumb; if (!t) return;
+    const u = await fileURL(t); if (u) el.style.backgroundImage = `url("${u}")`;
+  });
+}
+
+/* =====================================================================
+   Rendering — storyboard
+   ===================================================================== */
+function renderBoard() {
+  const e = ep();
+  const head = $("#board-head"), canvas = $("#canvas"), warnEl = $("#warnings");
+  if (!e) {
+    head.innerHTML = "";
+    warnEl.innerHTML = "";
+    canvas.innerHTML = `<div class="empty-board"><h2>No episode selected</h2><p>Make one with “+ New” on the left.</p></div>`;
+    return;
+  }
+  const n = S.story.episodes.indexOf(e) + 1;
+  const ends = endingCount(e);
+  const branches = Object.keys(e.branches || {}).length;
+  head.innerHTML = `
+    <div class="board-title"><h1>${n}. ${esc(e.title || "Untitled")}</h1><button data-act="ep-settings">Episode settings</button></div>
+    <span class="counts"><b>${branches}</b> branch${branches === 1 ? "" : "es"} · <b>${ends}</b> ending${ends === 1 ? "" : "s"}</span>
+    <button class="btn sm" data-act="play-ep">${I.play} Play episode</button>`;
+
+  const w = warnings(e);
+  warnEl.innerHTML = w.length ? `<details class="warn-bar" ${S.warnOpen ? "open" : ""}><summary>${w.length} thing${w.length === 1 ? "" : "s"} to fix</summary><ul>${
+    w.map((x, i) => `<li><button data-warn="${i}">${esc(x.msg)}</button></li>`).join("")}</ul></details>` : "";
+  warnEl.querySelector("details")?.addEventListener("toggle", ev => S.warnOpen = ev.target.open);
+  warnEl.querySelectorAll("[data-warn]").forEach(b => b.addEventListener("click", () => {
+    const at = w[+b.dataset.warn].at; if (!at) return;
+    S.sel = at.index != null ? { kind: "scene", ...at } : { kind: "branch", lane: at.lane };
+    S.tab = "scene"; renderBoard(); renderSide();
+    canvas.querySelector(".scene.on, .branch-chip.on")?.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
+  }));
+
+  const seen = new Set();
+  const root = renderLane(e, "main", 0, seen, null);
+  const reach = reachableBranches(e);
+  const orphans = Object.keys(e.branches || {}).filter(b => !seen.has(b) && !reach.has(b));
+  canvas.innerHTML = "";
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "display:flex;flex-direction:column;align-items:center;min-width:max-content;margin:0 auto";
+  wrap.appendChild(root);
+  if (orphans.length) {
+    const o = document.createElement("div"); o.className = "orphans";
+    o.innerHTML = `<h3>Not connected yet</h3>`;
+    const cols = document.createElement("div"); cols.className = "fork-cols";
+    for (const b of orphans) { seen.add(b); cols.appendChild(renderLane(e, b, 0, seen, { branch: b })); }
+    o.appendChild(cols); wrap.appendChild(o);
+  }
+  canvas.appendChild(wrap);
+  sizeForks(canvas);
+  hydrateThumbs(canvas);
+}
+
+// Draw the horizontal bar of each fork from the first column's center to the last's.
+function sizeForks(scope) {
+  scope.querySelectorAll(".fork-cols").forEach(cols => {
+    const kids = [...cols.children]; if (kids.length < 2) { cols.style.setProperty("--first", "50%"); cols.style.setProperty("--last", "50%"); return; }
+    cols.style.setProperty("--first", kids[0].offsetWidth / 2 + "px");
+    cols.style.setProperty("--last", kids[kids.length - 1].offsetWidth / 2 + "px");
+  });
+}
+
+function insertBtn(lane, index) {
+  const b = document.createElement("button");
+  b.className = "insert"; b.title = "Add a scene here"; b.setAttribute("aria-label", "Add a scene here");
+  b.innerHTML = I.plus;
+  b.addEventListener("click", () => addScene(lane, index));
+  return b;
+}
+function stem() { const s = document.createElement("div"); s.className = "stem"; return s; }
+
+// One column of scenes. `head` describes how we got here ({ labels, branch }).
+function renderLane(e, lane, start, seen, head) {
+  const col = document.createElement("div"); col.className = "lane";
+  if (head) {
+    const h = document.createElement("div"); h.className = "lane-head";
+    if (head.labels) h.innerHTML += `<span class="outcome-tag">${esc(head.labels.join(" / "))}</span>`;
+    if (head.branch) {
+      const br = e.branches[head.branch];
+      const on = S.sel?.kind === "branch" && S.sel.lane === head.branch;
+      h.innerHTML += `<button class="branch-chip ${br.ending ? "ending" : ""} ${on ? "on" : ""}" data-branch="${esc(head.branch)}">${br.ending ? I.flag : I.branch}<span>${esc(head.branch)}</span></button>`;
+    }
+    col.appendChild(h);
+  }
+  const steps = laneSteps(e, lane) || [];
+  if (steps.length > start) { col.appendChild(insertBtn(lane, start)); col.appendChild(stem()); }
+
+  for (let j = start; j < steps.length; j++) {
+    const s = steps[j];
+    if (j > start) { col.appendChild(stem()); col.appendChild(insertBtn(lane, j)); col.appendChild(stem()); }
+    col.appendChild(sceneCard(e, s, lane, j));
+
+    const keys = outcomeKeys(s);
+    const toBranch = keys.filter(k => s[k]);
+    if (toBranch.length) {
+      const fork = document.createElement("div"); fork.className = "fork";
+      fork.appendChild(stem());
+      const cols = document.createElement("div"); cols.className = "fork-cols";
+      const cont = keys.filter(k => !s[k]).map(k => outcomeLabel(s, k));
+      if (cont.length || j < steps.length - 1) {
+        cols.appendChild(j < steps.length - 1
+          ? renderLane(e, lane, j + 1, seen, { labels: cont.length ? cont : ["Unreachable"] , cont: true })
+          : laneEnd(e, lane, { labels: cont }));
+      }
+      const groups = {};
+      for (const k of toBranch) (groups[s[k]] ||= []).push(outcomeLabel(s, k));
+      for (const [b, labels] of Object.entries(groups)) {
+        if (!e.branches?.[b]) {
+          const miss = document.createElement("div"); miss.className = "lane";
+          miss.innerHTML = `<div class="lane-head"><span class="outcome-tag">${esc(labels.join(" / "))}</span></div><span class="jump" style="color:var(--bad)">Missing branch “${esc(b)}”</span>`;
+          cols.appendChild(miss);
+        } else if (seen.has(b)) {
+          const jump = document.createElement("div"); jump.className = "lane";
+          jump.innerHTML = `<div class="lane-head"><span class="outcome-tag">${esc(labels.join(" / "))}</span></div><span class="jump">Goes to <button data-branch="${esc(b)}">${esc(b)}</button></span>`;
+          cols.appendChild(jump);
+        } else {
+          seen.add(b);
+          cols.appendChild(renderLane(e, b, 0, seen, { labels, branch: b }));
+        }
+      }
+      fork.appendChild(cols);
+      col.appendChild(fork);
+      return col;
+    }
+  }
+  if (steps.length) col.appendChild(stem());
+  col.appendChild(laneEnd(e, lane, null));
+  return col;
+}
+
+function laneEnd(e, lane, head) {
+  const end = document.createElement("div"); end.className = "lane-end";
+  if (head?.labels?.length) end.innerHTML = `<div class="lane-head"><span class="outcome-tag">${esc(head.labels.join(" / "))}</span></div>`;
+  const add = document.createElement("button");
+  add.className = "btn sm add-scene"; add.innerHTML = `${I.plus} Add scene`;
+  add.addEventListener("click", () => addScene(lane, (laneSteps(e, lane) || []).length));
+  end.appendChild(add);
+  const br = lane === "main" ? null : e.branches[lane];
+  const mark = document.createElement("span");
+  mark.className = "end-mark" + (br?.ending ? " ending" : "");
+  mark.innerHTML = br?.ending ? `${I.flag} Ending: ${esc(br.ending)}` : `${I.flag} Episode ends`;
+  end.appendChild(mark);
+  return end;
+}
+
+function sceneCard(e, s, lane, index) {
+  const k = kindOf(s);
+  const b = document.createElement("button");
+  const on = S.sel?.kind === "scene" && S.sel.lane === lane && S.sel.index === index;
+  const playing = S.playing && S.playing.episodeId === e.id && S.playing.lane === lane && S.playing.index === index;
+  b.className = `scene k-${k} ${on ? "on" : ""} ${playing ? "playing" : ""}`;
+  b.dataset.lane = lane; b.dataset.index = index;
+  const hasWarn = warnings(e).some(w => w.at && w.at.lane === lane && w.at.index === index);
+  const missing = s.type === "game" ? !(s.html || s.game) : !s.src;
+  b.innerHTML = `
+    ${hasWarn ? `<span class="flag" title="Needs attention">!</span>` : ""}
+    <span class="frame" ${s.type !== "game" && s.src ? `data-video="videos/${esc(s.src)}"` : ""}>
+      <span class="ph">${k === "game" ? I.game : k === "overlay" ? I.tap : k === "button" ? I.tap : I.film}</span>
+      ${s.loop ? `<span class="loop" title="Loops">${I.loop}</span>` : ""}
+    </span>
+    <span class="info">
+      <span class="kind">${KIND[k].label}</span>
+      <span class="name ${missing ? "missing" : ""}">${esc(sceneTitle(s))}</span>
+      <span class="sub">${esc(sceneSub(s))}</span>
+    </span>`;
+  b.addEventListener("click", () => select({ kind: "scene", lane, index }));
+  b.addEventListener("dblclick", () => playFrom(lane, index));
+  return b;
+}
+
+async function hydrateThumbs(scope) {
+  for (const el of scope.querySelectorAll("[data-video]")) {
+    const path = el.dataset.video;
+    const url = await fileURL(path);
+    if (!url || !el.isConnected) continue;
+    const v = document.createElement("video");
+    v.muted = true; v.playsInline = true; v.preload = "metadata";
+    v.src = url;
+    v.addEventListener("loadedmetadata", () => {
+      v.currentTime = Math.min(0.6, (v.duration || 1) / 2);    // show a real frame, not black
+      const m = S.meta[path] || (S.meta[path] = {});
+      const changed = m.w !== v.videoWidth;
+      Object.assign(m, { w: v.videoWidth, h: v.videoHeight, dur: v.duration });
+      if (changed && Math.abs(v.videoWidth / v.videoHeight - 0.8) > 0.03) renderBoardSoon();
+    }, { once: true });
+    el.querySelector(".ph")?.remove();
+    el.prepend(v);
+  }
+  scope.querySelectorAll("[data-branch]").forEach(b => b.addEventListener("click", () => select({ kind: "branch", lane: b.dataset.branch })));
+}
+let boardSoon = 0;
+function renderBoardSoon() { cancelAnimationFrame(boardSoon); boardSoon = requestAnimationFrame(() => { renderBoard(); }); }
+
+function select(sel) {
+  S.sel = sel; S.confirm = null; S.newBranchFor = null;
+  S.tab = "scene";
+  renderBoard(); renderSide();
+}
+
+/* =====================================================================
+   Scene operations
+   ===================================================================== */
+function addScene(lane, index) {
+  change(() => {
+    laneSteps(ep(), lane).splice(index, 0, { type: "video", src: "" });
+    S.sel = { kind: "scene", lane, index };
+    S.tab = "scene";
+  });
+}
+function moveScene(dir) {
+  const { lane, index } = S.sel; const steps = laneSteps(ep(), lane);
+  const to = index + dir; if (to < 0 || to >= steps.length) return;
+  change(() => { [steps[index], steps[to]] = [steps[to], steps[index]]; S.sel.index = to; });
+}
+function deleteScene() {
+  const { lane, index } = S.sel;
+  change(() => { laneSteps(ep(), lane).splice(index, 1); S.sel = null; S.confirm = null; fixSelection(); });
+}
+function duplicateScene() {
+  const { lane, index } = S.sel; const steps = laneSteps(ep(), lane);
+  change(() => { steps.splice(index + 1, 0, clone(steps[index])); S.sel.index = index + 1; });
+}
+function setKind(step, k) {
+  change(() => {
+    const keep = { note: step.note };
+    const src = step.src;
+    for (const key of Object.keys(step)) delete step[key];
+    if (keep.note) step.note = keep.note;
+    if (k === "game") { step.type = "game"; step.html = ""; return; }
+    step.type = "video"; step.src = src || "";
+    if (k === "button") { step.loop = true; step.button = { label: "TAP!", appearAt: 1, flashEvery: 2, timeLimit: 0 }; }
+    if (k === "overlay") { step.loop = true; step.overlay = ""; step.params = {}; }
+  });
+}
+function newBranch(step, key, name) {
+  const e = ep();
+  const id = slug(name);
+  if (!id) { toast("Give the branch a name"); return false; }
+  if (e.branches?.[id]) { toast(`There's already a branch called ${id}`); return false; }
+  change(() => {
+    e.branches ||= {};
+    e.branches[id] = { steps: [] };
+    step[key] = id;
+    S.newBranchFor = null;
+  });
+  return true;
+}
+function renameBranch(oldId, name) {
+  const e = ep(); const id = slug(name);
+  if (!id || id === oldId) return;
+  if (e.branches[id]) { toast(`There's already a branch called ${id}`); renderSide(); return; }
+  change(() => {
+    const entries = Object.entries(e.branches).map(([k, v]) => [k === oldId ? id : k, v]);
+    e.branches = Object.fromEntries(entries);
+    forEachStep(e, s => { for (const k of ["onTap", "onMiss", "onWin", "onLose"]) if (s[k] === oldId) s[k] = id; });
+    if (S.sel?.lane === oldId) S.sel.lane = id;
+  });
+}
+function deleteBranch(id) {
+  const e = ep();
+  change(() => {
+    delete e.branches[id];
+    forEachStep(e, s => { for (const k of ["onTap", "onMiss", "onWin", "onLose"]) if (s[k] === id) delete s[k]; });
+    S.sel = null; S.confirm = null;
+  });
+}
+
+/* =====================================================================
+   Episodes
+   ===================================================================== */
+function addEpisode() {
+  change(() => {
+    let n = S.story.episodes.length + 1;
+    while (S.story.episodes.some(e => e.id === "ep" + n)) n++;
+    S.story.episodes.push({ id: "ep" + n, title: `Episode ${n}`, steps: [], branches: {} });
+    S.epId = "ep" + n;
+    S.sel = { kind: "episode" };
+  });
+}
+function moveEpisode(dir) {
+  const eps = S.story.episodes, i = eps.indexOf(ep()), to = i + dir;
+  if (to < 0 || to >= eps.length) return;
+  change(() => { [eps[i], eps[to]] = [eps[to], eps[i]]; });
+}
+function deleteEpisode() {
+  change(() => {
+    S.story.episodes = S.story.episodes.filter(e => e.id !== S.epId);
+    S.epId = S.story.episodes[0]?.id || null; S.sel = null; S.confirm = null;
+  });
+}
+async function makeThumb() {
+  const e = ep(); const first = e.steps.find(s => s.type !== "game" && s.src);
+  if (!first) { toast("Add a clip to the first scene first"); return; }
+  if (!S.root) { toast("Open the project folder to save a thumbnail"); return; }
+  const url = await fileURL("videos/" + first.src);
+  const v = document.createElement("video"); v.muted = true; v.src = url;
+  await new Promise(r => v.addEventListener("loadeddata", r, { once: true }));
+  v.currentTime = Math.min(1, (v.duration || 2) / 2);
+  await new Promise(r => v.addEventListener("seeked", r, { once: true }));
+  const c = document.createElement("canvas"); c.width = 256; c.height = 320;
+  const g = c.getContext("2d");
+  const s = Math.max(256 / v.videoWidth, 320 / v.videoHeight);
+  const w = v.videoWidth * s, h = v.videoHeight * s;
+  g.drawImage(v, (256 - w) / 2, (320 - h) / 2, w, h);
+  const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.85));
+  const name = await importFile(new File([blob], `${e.id}_thumb.jpg`), "videos", `${e.id}_thumb.jpg`);
+  change(() => { e.thumb = "videos/" + name; });
+  toast("Thumbnail saved");
+}
+
+/* =====================================================================
+   Rendering — inspector
+   ===================================================================== */
+function renderSide() {
+  $("#tab-scene").classList.toggle("on", S.tab === "scene");
+  $("#tab-play").classList.toggle("on", S.tab === "play");
+  $("#inspector").hidden = S.tab !== "scene";
+  $("#playtest").hidden = S.tab !== "play";
+  if (S.tab === "play") { ensureGame(); fitPhone(); return; }
+  const box = $("#inspector");
+  const e = ep();
+  if (!e) { box.innerHTML = `<p style="color:var(--muted)">Pick or make an episode.</p>`; return; }
+  if (!S.sel) { box.innerHTML = inspectorHelp(); return; }
+  if (S.sel.kind === "episode") return renderEpisodeInspector(box, e);
+  if (S.sel.kind === "branch") return renderBranchInspector(box, e, S.sel.lane);
+  const step = laneSteps(e, S.sel.lane)?.[S.sel.index];
+  if (!step) { box.innerHTML = inspectorHelp(); return; }
+  renderSceneInspector(box, e, step);
+}
+
+function inspectorHelp() {
+  return `<div class="insp-head"><div><h3>Storyboard</h3><div class="where">Click a scene to edit it.</div></div></div>
+  <div class="group"><h4>Scene types</h4>
+    ${Object.entries(KIND).map(([k, v]) => `<div class="kind-opt k-${k}" style="pointer-events:none"><b>${v.label}</b><span>${v.desc}</span></div>`).join("")}
+  </div>
+  <div class="group"><h4>Tips</h4>
+    <p style="margin:0;color:var(--muted)">Hover a column and use + to insert a scene. Give a button, overlay or minigame scene an outcome that goes to a new branch to split the story. Double-click a scene to playtest from it.</p>
+  </div>`;
+}
+
+function optionList(list, current, placeholder) {
+  const opts = [...list];
+  if (current && !opts.includes(current)) opts.unshift(current);
+  return `<option value="">${esc(placeholder)}</option>` + opts.map(n => `<option ${n === current ? "selected" : ""}>${esc(n)}</option>`).join("");
+}
+function knownVideos() {
+  if (S.root) return S.files.videos;
+  const set = new Set(); S.story.episodes.forEach(e => forEachStep(e, s => s.src && set.add(s.src))); return [...set].sort();
+}
+function knownHtml() {
+  if (S.root) return S.files.html.filter(n => n !== "overlay-template.html");
+  const set = new Set(["tap-targets.html"]); S.story.episodes.forEach(e => forEachStep(e, s => { s.html && set.add(s.html); s.overlay && set.add(s.overlay); })); return [...set].sort();
+}
+
+function renderSceneInspector(box, e, step) {
+  const k = kindOf(step);
+  const { lane, index } = S.sel;
+  const laneName = lane === "main" ? "Main story" : `Branch: ${lane}`;
+  const steps = laneSteps(e, lane);
+  const branchNames = Object.keys(e.branches || {});
+
+  let html = `
+    <div class="insp-head">
+      <div><h3>Scene ${index + 1}</h3><div class="where">${esc(laneName)}</div></div>
+      <button class="btn sm primary" data-act="play-here">${I.play} Play from here</button>
+    </div>
+    <div class="field"><label for="f-note">Note</label>
+      <textarea id="f-note" placeholder="What happens in this scene">${esc(step.note || "")}</textarea></div>
+
+    <div class="group"><h4>Scene type</h4><div class="kinds">
+      ${Object.entries(KIND).map(([kk, v]) => `<button class="kind-opt k-${kk} ${kk === k ? "on" : ""}" data-kind="${kk}"><b>${v.label}</b><span>${v.desc}</span></button>`).join("")}
+    </div></div>`;
+
+  if (k !== "game") {
+    const m = S.meta["videos/" + step.src];
+    html += `
+    <div class="group"><h4>Clip</h4>
+      <div class="row" style="align-items:flex-start;gap:12px">
+        <div class="clip-preview">${step.src ? `<video id="prev" controls playsinline muted loop></video>` : ""}</div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:8px;min-width:0">
+          <select id="f-src">${optionList(knownVideos(), step.src, "Choose a clip…")}</select>
+          ${S.root ? `<button class="btn sm" data-act="import-clip">Add a new clip file…</button>` : ""}
+          ${S.root && step.src ? `<button class="btn sm" data-act="replace-clip" title="Overwrite ${esc(step.src)} with an updated version; every scene using it gets the new one">Replace with updated version…</button>` : ""}
+          <div class="clip-meta" id="clip-meta">${clipMeta(m)}</div>
+        </div>
+      </div>
+      <label class="check"><input type="checkbox" id="f-loop" ${step.loop ? "checked" : ""}> Loop the clip until something happens</label>
+    </div>`;
+  }
+
+  if (k === "button") {
+    const b = step.button;
+    html += `
+    <div class="group"><h4>Button</h4>
+      <div class="field"><label for="f-blabel">Label</label><input type="text" id="f-blabel" value="${esc(b.label || "")}"></div>
+      <div class="grid3">
+        <div class="field"><label for="f-appear">Appears at (s)</label><input type="number" id="f-appear" min="0" step="0.1" value="${b.appearAt ?? 1}"></div>
+        <div class="field"><label for="f-flash">Flash every (s)</label><input type="number" id="f-flash" min="0.5" step="0.5" value="${b.flashEvery ?? 2}"></div>
+        <div class="field"><label for="f-limit">Time limit (s)</label><input type="number" id="f-limit" min="0" step="0.5" value="${b.timeLimit || 0}"></div>
+      </div>
+      <span class="hint" style="font-size:12px;color:var(--dim)">Time limit 0 = wait forever. With a limit, missing it is its own outcome.</span>
+    </div>`;
+  }
+
+  if (k === "overlay" || k === "game") {
+    const file = k === "overlay" ? step.overlay : step.html;
+    const builtin = k === "game" && !step.html && step.game;
+    html += `
+    <div class="group"><h4>${k === "overlay" ? "See-through game" : "Minigame"}</h4>
+      <div class="field"><label for="f-html">${k === "overlay" ? "Game file (transparent HTML)" : "Game"}</label>
+        <select id="f-html">
+          ${optionList(knownHtml(), file || "", "Choose a game…")}
+          ${k === "game" ? `<optgroup label="Built-in">${Object.entries(BUILTIN_GAMES).map(([id, n]) => `<option value="builtin:${id}" ${builtin === id ? "selected" : ""}>${esc(n)}</option>`).join("")}</optgroup>` : ""}
+        </select></div>
+      ${S.root ? `<div class="actions"><button class="btn sm" data-act="import-html">Add an HTML game file…</button></div>` : ""}
+      ${k === "game" ? `<div class="field"><label for="f-gtitle">Title (shown in the playtest)</label><input type="text" id="f-gtitle" value="${esc(step.title || "")}"></div>` : ""}
+      <div class="field params"><span class="lbl">Settings passed to the game</span>
+        ${Object.entries(step.params || {}).map(([pk, pv], i) => `<div class="prow"><input type="text" data-pk="${i}" value="${esc(pk)}" aria-label="Setting name"><input type="text" data-pv="${i}" value="${esc(pv)}" aria-label="Value"><button class="btn sm icon-btn ghost" data-prm="${i}" aria-label="Remove setting">${I.x}</button></div>`).join("")}
+        <div><button class="btn sm ghost" data-act="add-param">+ Add setting</button></div>
+        ${k === "overlay" && (step.overlay === "tap-targets.html") ? `<span style="font-size:12px;color:var(--dim)">tap-targets: count, time, startAt, label, life</span>` : ""}
+      </div>
+    </div>`;
+  }
+
+  const keys = outcomeKeys(step);
+  if (keys.length) {
+    html += `<div class="group"><h4>What happens next</h4>
+      ${keys.map(key => `
+        <div class="outcome"><span>${esc(outcomeLabel(step, key))}</span>
+          <select data-out="${key}">
+            <option value="">Continue down this path</option>
+            ${branchNames.map(b => `<option value="${esc(b)}" ${step[key] === b ? "selected" : ""}>→ ${esc(b)}${e.branches[b].ending ? " (ending)" : ""}</option>`).join("")}
+            <option value="__new">+ New branch…</option>
+          </select></div>
+        ${S.newBranchFor === key ? `<div class="newbranch"><input type="text" id="nb-name" placeholder="Branch name, e.g. Seagull leaves"><button class="btn sm primary" data-act="nb-ok" data-key="${key}">Add</button><button class="btn sm ghost" data-act="nb-cancel">Cancel</button></div>` : ""}
+      `).join("")}
+    </div>`;
+  }
+
+  html += `<div class="group"><h4>Scene</h4><div class="actions">
+      <button class="btn sm" data-act="up" ${index === 0 ? "disabled" : ""}>${I.up} Move up</button>
+      <button class="btn sm" data-act="down" ${index === steps.length - 1 ? "disabled" : ""}>${I.down} Move down</button>
+      <button class="btn sm" data-act="dup">Duplicate</button>
+      <button class="btn sm danger" data-act="del">Delete</button>
+    </div>
+    ${S.confirm === "scene" ? `<div class="confirm">Delete this scene? <span class="spacer"></span><button class="btn sm danger" data-act="del-yes">Delete</button><button class="btn sm ghost" data-act="del-no">Keep</button></div>` : ""}
+  </div>`;
+
+  box.innerHTML = html;
+
+  // preview + metadata
+  if (step.src && k !== "game") {
+    fileURL("videos/" + step.src).then(u => {
+      const v = box.querySelector("#prev"); if (!v || !u) return;
+      v.src = u;
+      v.addEventListener("loadedmetadata", () => {
+        v.currentTime = Math.min(0.3, (v.duration || 1) / 2);
+        const m = S.meta["videos/" + step.src] || (S.meta["videos/" + step.src] = {});
+        Object.assign(m, { w: v.videoWidth, h: v.videoHeight, dur: v.duration });
+        const meta = box.querySelector("#clip-meta"); if (meta) meta.innerHTML = clipMeta(m);
+      }, { once: true });
+    });
+  }
+
+  // fields
+  const on = (sel, ev, fn) => box.querySelector(sel)?.addEventListener(ev, fn);
+  on("#f-note", "input", ev => edit(() => { ev.target.value ? step.note = ev.target.value : delete step.note; }));
+  box.querySelectorAll("[data-kind]").forEach(b => b.addEventListener("click", () => { if (b.dataset.kind !== k) setKind(step, b.dataset.kind); }));
+  on("#f-src", "change", ev => change(() => { step.src = ev.target.value; }));
+  on("#f-loop", "change", ev => change(() => { ev.target.checked ? step.loop = true : delete step.loop; }));
+  on("#f-blabel", "input", ev => edit(() => { step.button.label = ev.target.value; }));
+  const num = (sel, key, opt) => on(sel, "input", ev => edit(() => {
+    const v = parseFloat(ev.target.value); step.button[key] = isNaN(v) ? 0 : v;
+    if (opt && !(step.button[key] > 0)) { delete step.onMiss; }
+  }));
+  num("#f-appear", "appearAt"); num("#f-flash", "flashEvery");
+  on("#f-limit", "change", ev => change(() => {
+    const v = parseFloat(ev.target.value); step.button.timeLimit = isNaN(v) ? 0 : v;
+    if (!(step.button.timeLimit > 0)) delete step.onMiss;
+  }));
+  on("#f-html", "change", ev => change(() => {
+    const v = ev.target.value;
+    if (k === "overlay") step.overlay = v;
+    else if (v.startsWith("builtin:")) { delete step.html; step.game = v.slice(8); }
+    else { delete step.game; step.html = v; }
+  }));
+  on("#f-gtitle", "input", ev => edit(() => { ev.target.value ? step.title = ev.target.value : delete step.title; }));
+
+  // params editor
+  const paramsArr = () => Object.entries(step.params || {});
+  box.querySelectorAll("[data-pk],[data-pv]").forEach(inp => inp.addEventListener("input", () => edit(() => {
+    const arr = paramsArr();
+    const i = +(inp.dataset.pk ?? inp.dataset.pv);
+    if (inp.dataset.pk != null) arr[i][0] = inp.value; else arr[i][1] = autoType(inp.value);
+    step.params = Object.fromEntries(arr.filter(([key]) => key !== "" || true));
+  })));
+  box.querySelectorAll("[data-prm]").forEach(b => b.addEventListener("click", () => change(() => {
+    const arr = paramsArr(); arr.splice(+b.dataset.prm, 1); step.params = Object.fromEntries(arr);
+  })));
+
+  // outcomes
+  box.querySelectorAll("[data-out]").forEach(sel => sel.addEventListener("change", () => {
+    const key = sel.dataset.out;
+    if (sel.value === "__new") { S.newBranchFor = key; renderSide(); box.querySelector("#nb-name")?.focus(); return; }
+    change(() => { sel.value ? step[key] = sel.value : delete step[key]; });
+  }));
+  on("#nb-name", "keydown", ev => { if (ev.key === "Enter") newBranch(step, S.newBranchFor, ev.target.value); if (ev.key === "Escape") { S.newBranchFor = null; renderSide(); } });
+
+  bindActions(box, step);
+}
+
+function autoType(v) { return v !== "" && !isNaN(v) && v.trim() !== "" ? Number(v) : v; }
+
+function clipMeta(m) {
+  if (!m || !m.w) return "";
+  const ratioOk = Math.abs(m.w / m.h - 0.8) <= 0.03;
+  const size = m.size ? `${(m.size / 1048576).toFixed(1)} MB` : "";
+  return `<span>${m.w}×${m.h} · ${m.dur ? m.dur.toFixed(1) + "s" : ""}${size ? " · " + size : ""}</span>
+    ${ratioOk ? `<span>4:5 ✓</span>` : `<span class="bad">Not 4:5 — edges will be cropped</span>`}
+    ${m.size && m.dur && m.size / m.dur > 400000 ? `<span class="bad">Big file — run tools/encode.sh to shrink it</span>` : ""}`;
+}
+
+function renderBranchInspector(box, e, id) {
+  const br = e.branches[id];
+  if (!br) { box.innerHTML = inspectorHelp(); return; }
+  const from = [];
+  forEachStep(e, (s, lane, i) => { for (const k of ["onTap", "onMiss", "onWin", "onLose"]) if (s[k] === id) from.push(`${lane === "main" ? "Main" : lane} scene ${i + 1} · ${outcomeLabel(s, k)}`); });
+  box.innerHTML = `
+    <div class="insp-head"><div><h3>Branch</h3><div class="where">${br.steps?.length || 0} scene${br.steps?.length === 1 ? "" : "s"}</div></div>
+      <button class="btn sm primary" data-act="play-branch" ${br.steps?.length ? "" : "disabled"}>${I.play} Play branch</button></div>
+    <div class="field"><label for="b-name">Branch name</label><input type="text" id="b-name" value="${esc(id)}"><span class="hint">Used to link scenes to this branch. Renaming updates every link.</span></div>
+    <div class="group"><h4>Ending</h4>
+      <label class="check"><input type="checkbox" id="b-end" ${br.ending ? "checked" : ""}> This branch is an ending</label>
+      ${br.ending != null ? `<div class="field"><label for="b-etitle">Ending name (shown on the end screen)</label><input type="text" id="b-etitle" value="${esc(br.ending)}"></div>` : ""}
+    </div>
+    <div class="group"><h4>Reached from</h4>
+      ${from.length ? `<ul style="margin:0;padding-left:18px;color:var(--muted);display:grid;gap:4px">${from.map(f => `<li>${esc(f)}</li>`).join("")}</ul>` : `<p style="margin:0;color:var(--warn)">Nothing leads here yet.</p>`}
+    </div>
+    <div class="group"><div class="actions"><button class="btn sm danger" data-act="del-branch">Delete branch</button></div>
+      ${S.confirm === "branch" ? `<div class="confirm">Delete “${esc(id)}” and its ${br.steps?.length || 0} scene(s)? <span class="spacer"></span><button class="btn sm danger" data-act="delb-yes">Delete</button><button class="btn sm ghost" data-act="del-no">Keep</button></div>` : ""}
+    </div>`;
+  const nm = box.querySelector("#b-name");
+  nm.addEventListener("change", () => renameBranch(id, nm.value));
+  nm.addEventListener("keydown", ev => { if (ev.key === "Enter") nm.blur(); });
+  box.querySelector("#b-end").addEventListener("change", ev => change(() => {
+    if (ev.target.checked) br.ending = br.ending || id.replace(/([A-Z])/g, " $1").replace(/^./, c => c.toUpperCase()); else delete br.ending;
+  }));
+  box.querySelector("#b-etitle")?.addEventListener("input", ev => edit(() => { br.ending = ev.target.value; }));
+  bindActions(box, null);
+}
+
+function renderEpisodeInspector(box, e) {
+  const i = S.story.episodes.indexOf(e);
+  box.innerHTML = `
+    <div class="insp-head"><div><h3>Episode ${i + 1}</h3><div class="where">Settings</div></div></div>
+    <div class="field"><label for="e-title">Title</label><input type="text" id="e-title" value="${esc(e.title || "")}"></div>
+    <div class="field"><label for="e-id">ID</label><input type="text" id="e-id" value="${esc(e.id)}"><span class="hint">Saved progress uses this, so avoid changing it once players have the game.</span></div>
+    <div class="group"><h4>Menu thumbnail</h4>
+      <div class="row" style="align-items:flex-start;gap:12px">
+        <div class="clip-preview" style="width:96px" id="e-thumb"></div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:8px">
+          <select id="e-thumbsel">${optionList(S.root ? S.files.images.map(n => "videos/" + n) : (e.thumb ? [e.thumb] : []), e.thumb || "", "No thumbnail")}</select>
+          <button class="btn sm" data-act="make-thumb">Make from first clip</button>
+        </div>
+      </div>
+    </div>
+    <div class="group"><h4>Order</h4><div class="actions">
+      <button class="btn sm" data-act="ep-up" ${i === 0 ? "disabled" : ""}>${I.up} Earlier</button>
+      <button class="btn sm" data-act="ep-down" ${i === S.story.episodes.length - 1 ? "disabled" : ""}>${I.down} Later</button>
+      <button class="btn sm danger" data-act="del-ep">Delete episode</button>
+    </div>
+    ${S.confirm === "episode" ? `<div class="confirm">Delete “${esc(e.title)}”? <span class="spacer"></span><button class="btn sm danger" data-act="dele-yes">Delete</button><button class="btn sm ghost" data-act="del-no">Keep</button></div>` : ""}
+    </div>`;
+  if (e.thumb) fileURL(e.thumb).then(u => { const t = box.querySelector("#e-thumb"); if (t && u) t.innerHTML = `<img src="${u}" alt="" style="width:100%;height:100%;object-fit:cover">`; });
+  box.querySelector("#e-title").addEventListener("input", ev => edit(() => { e.title = ev.target.value; }));
+  const idIn = box.querySelector("#e-id");
+  idIn.addEventListener("change", () => {
+    const v = idIn.value.trim().replace(/[^\w-]+/g, "");
+    if (!v || v === e.id) { idIn.value = e.id; return; }
+    if (S.story.episodes.some(x => x.id === v)) { toast("Another episode already uses that ID"); idIn.value = e.id; return; }
+    change(() => { e.id = v; S.epId = v; });
+  });
+  box.querySelector("#e-thumbsel").addEventListener("change", ev => change(() => { ev.target.value ? e.thumb = ev.target.value : delete e.thumb; }));
+  bindActions(box, null);
+}
+
+function bindActions(box, step) {
+  box.querySelectorAll("[data-act]").forEach(b => b.addEventListener("click", async () => {
+    const a = b.dataset.act;
+    if (a === "play-here") playFrom(S.sel.lane, S.sel.index);
+    if (a === "play-branch") playFrom(S.sel.lane, 0);
+    if (a === "up") moveScene(-1);
+    if (a === "down") moveScene(1);
+    if (a === "dup") duplicateScene();
+    if (a === "del") { S.confirm = "scene"; renderSide(); }
+    if (a === "del-yes") deleteScene();
+    if (a === "del-no") { S.confirm = null; renderSide(); }
+    if (a === "del-branch") { S.confirm = "branch"; renderSide(); }
+    if (a === "delb-yes") deleteBranch(S.sel.lane);
+    if (a === "del-ep") { S.confirm = "episode"; renderSide(); }
+    if (a === "dele-yes") deleteEpisode();
+    if (a === "ep-up") moveEpisode(-1);
+    if (a === "ep-down") moveEpisode(1);
+    if (a === "make-thumb") makeThumb();
+    if (a === "nb-ok") newBranch(step, b.dataset.key, box.querySelector("#nb-name").value);
+    if (a === "nb-cancel") { S.newBranchFor = null; renderSide(); }
+    if (a === "add-param") change(() => { step.params ||= {}; let n = 1; while (("setting" + n) in step.params) n++; step.params["setting" + n] = ""; });
+    if (a === "import-clip" || a === "replace-clip") {
+      const f = await pickFile("video/*,.mp4,.mov,.m4v,.webm"); if (!f) return;
+      const name = await importFile(f, "videos", a === "replace-clip" ? step.src : null);
+      change(() => { step.src = name; });
+      sendStory();
+      toast(a === "replace-clip" ? `Replaced ${name}` : `Added ${name}`);
+    }
+    if (a === "import-html") {
+      const f = await pickFile(".html,text/html"); if (!f) return;
+      const name = await importFile(f, "minigames/html");
+      change(() => { if (kindOf(step) === "overlay") step.overlay = name; else { delete step.game; step.html = name; } });
+      toast(`Added ${name}`);
+    }
+  }));
+}
+
+/* =====================================================================
+   Playtest
+   ===================================================================== */
+let gameReady = false, pendingPlay = null;
+function ensureGame() {
+  const f = $("#game-frame");
+  if (!f.src) f.src = "index.html#studio";
+}
+function sendStory() {
+  if (!gameReady) return;
+  $("#game-frame").contentWindow.postMessage({ type: "studio:story", story: clone(S.story), bust: S.bust }, "*");
+}
+function playFrom(lane, index) {
+  S.tab = "play"; renderSide();
+  const msg = { type: "studio:play", story: clone(S.story), episodeId: S.epId, from: { lane, index }, bust: S.bust };
+  if (gameReady) $("#game-frame").contentWindow.postMessage(msg, "*"); else pendingPlay = msg;
+}
+window.addEventListener("message", ev => {
+  if (ev.source !== $("#game-frame").contentWindow) return;
+  const d = ev.data || {};
+  if (d.type === "studio:ready") {
+    gameReady = true; sendStory();
+    if (pendingPlay) { ev.source.postMessage(pendingPlay, "*"); pendingPlay = null; }
+  }
+  if (d.type === "studio:step") {
+    S.playing = { episodeId: d.episodeId, lane: d.lane, index: d.index };
+    document.querySelectorAll(".scene.playing").forEach(x => x.classList.remove("playing"));
+    if (d.episodeId === S.epId) {
+      const card = document.querySelector(`.scene[data-lane="${CSS.escape(d.lane)}"][data-index="${d.index}"]`);
+      card?.classList.add("playing");
+      card?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+    }
+  }
+});
+function fitPhone() {
+  const screen = $("#phone-screen"); const f = $("#game-frame");
+  const w = screen.clientWidth; if (!w) return;
+  f.style.transform = `scale(${w / 390})`;
+}
+new ResizeObserver(fitPhone).observe(document.querySelector("#phone-screen"));
+
+/* =====================================================================
+   Welcome / startup
+   ===================================================================== */
+async function showWelcome() {
+  const saved = canOpenFolders ? await idb.get("folder") : null;
+  const w = $("#welcome");
+  w.innerHTML = `<div class="welcome-card">
+    <h2>Episode Studio</h2>
+    <p>Build Episode Night stories as a storyboard: scenes top to bottom, branches side by side, and a phone playtest that runs your edits live.</p>
+    ${canOpenFolders ? `
+      <ol>
+        <li>In the project folder, run <code>python3 -m http.server 8000</code></li>
+        <li>Open <code>localhost:8000/studio.html</code> in Chrome</li>
+        <li>Click <b>Open project folder</b> and pick the episode-night folder</li>
+      </ol>
+      <div class="row">
+        ${saved ? `<button class="btn primary" id="w-reopen">${I.folder} Reopen ${esc(saved.name)}</button>` : ""}
+        <button class="btn ${saved ? "" : "primary"}" id="w-open">${I.folder} Open project folder</button>
+        <button class="btn ghost" id="w-look">Just look around</button>
+      </div>`
+    : `<p>This browser can't open folders, so edits stay in memory. Use <b>Download story.json</b> to keep them, or open the Studio in desktop Chrome or Edge for live saving.</p>
+      <div class="row"><button class="btn primary" id="w-look">Start</button></div>`}
+  </div>`;
+  w.hidden = false;
+  w.querySelector("#w-open")?.addEventListener("click", () => openFolder());
+  w.querySelector("#w-reopen")?.addEventListener("click", () => openFolder(saved));
+  w.querySelector("#w-look").addEventListener("click", () => { w.hidden = true; });
+}
+
+async function loadServedStory() {
+  try {
+    const r = await fetch("story.json", { cache: "no-store" });
+    S.story = await r.json();
+  } catch { S.story = { version: 1, episodes: [] }; }
+  S.epId = S.story.episodes[0]?.id || null;
+}
+
+function renderFolder() {
+  $("#folder").innerHTML = S.root
+    ? `${I.folder}<strong>${esc(S.root.name)}</strong><button class="btn sm ghost" id="f-change">Change</button><button class="btn sm ghost" id="f-rescan" title="Pick up files you added outside the Studio">Rescan files</button>`
+    : canOpenFolders ? `<button class="btn sm" id="f-open">${I.folder} Open project folder</button>` : `<span>Read-only preview</span>`;
+  $("#f-open")?.addEventListener("click", () => openFolder());
+  $("#f-change")?.addEventListener("click", () => openFolder());
+  $("#f-rescan")?.addEventListener("click", async () => { S.urls = {}; S.meta = {}; S.bust++; await scanFiles(); renderAll(); sendStory(); toast("Files rescanned"); });
+}
+
+function renderAll() { renderFolder(); renderEpisodes(); renderBoard(); renderSide(); renderUndo(); }
+
+// static bits + events
+$("#undo").innerHTML = I.undo; $("#redo").innerHTML = I.redo;
+$("#tab-scene").innerHTML = `${I.edit} Scene`;
+$("#tab-play").innerHTML = `${I.phone} Playtest`;
+$("#undo").addEventListener("click", undo);
+$("#redo").addEventListener("click", redo);
+$("#add-ep").addEventListener("click", addEpisode);
+$("#tab-scene").addEventListener("click", () => { S.tab = "scene"; renderSide(); });
+$("#tab-play").addEventListener("click", () => { S.tab = "play"; renderSide(); });
+$("#pt-start").addEventListener("click", () => playFrom("main", 0));
+$("#pt-scene").addEventListener("click", () => {
+  if (S.sel?.kind === "scene") playFrom(S.sel.lane, S.sel.index);
+  else if (S.sel?.kind === "branch") playFrom(S.sel.lane, 0);
+  else toast("Select a scene on the storyboard first");
+});
+$("#pt-menu").addEventListener("click", () => { if (gameReady) $("#game-frame").contentWindow.postMessage({ type: "studio:menu" }, "*"); });
+$("#download").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(S.story, null, 2) + "\n"], { type: "application/json" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "story.json"; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+});
+$("#ep-list").addEventListener("click", ev => {
+  const b = ev.target.closest("[data-ep]"); if (!b) return;
+  S.epId = b.dataset.ep; S.sel = null; S.confirm = null;
+  renderEpisodes(); renderBoard(); renderSide();
+});
+$("#board-head").addEventListener("click", ev => {
+  const a = ev.target.closest("[data-act]")?.dataset.act;
+  if (a === "ep-settings") select({ kind: "episode" });
+  if (a === "play-ep") playFrom("main", 0);
+});
+document.addEventListener("keydown", ev => {
+  const a = document.activeElement;
+  const typing = a?.tagName === "TEXTAREA" || (a?.tagName === "INPUT" && /^(text|number|search)$/.test(a.type));
+  if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "z" && !typing) { ev.preventDefault(); ev.shiftKey ? redo() : undo(); }
+  if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "y" && !typing) { ev.preventDefault(); redo(); }
+  if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "s") { ev.preventDefault(); flushEdit(); S.root ? save() : $("#download").click(); }
+});
+window.addEventListener("beforeunload", ev => { if (S.saveState === "saving") { ev.preventDefault(); } });
+window.addEventListener("resize", () => sizeForks($("#canvas")));
+
+(async function start() {
+  await loadServedStory();
+  setStatus(S.root ? "saved" : "none");
+  renderAll();
+  ensureGame();
+  showWelcome();
+})();
+</script>
+</body>
+</html>

@@ -27,15 +27,49 @@ Add `#dev` to the URL for test mode: skip buttons everywhere and an
 "Unlock all" button on the menu. `window.game` in the console gives you the
 engine, progress and player.
 
+## Episode Studio (the storyboard tool)
+
+`studio.html` is a visual editor for the whole story. Run the local server
+above, then open **http://localhost:8000/studio.html in Chrome** and click
+**Open project folder** (pick this folder). Every change saves straight to
+`story.json`, so you just commit and push when you're happy.
+
+- **Left:** episodes. Add, rename, reorder, set the menu thumbnail.
+- **Middle:** the storyboard, top to bottom. Where the story branches, the
+  column splits into side-by-side paths; endings are flagged. Hover a
+  column and press **+** to insert a scene.
+- **Right, Scene tab:** edit the selected scene.
+  - **Clip:** plays and moves on.
+  - **Clip + button:** a button over the clip (label, when it appears,
+    flash rate, optional time limit), usually looping.
+  - **Clip + game:** a see-through HTML game layered over the playing clip.
+  - **Minigame:** a full-screen game (HTML file or built-in).
+  - **What happens next:** send each outcome (tapped, missed, won, lost)
+    down this path or into a branch, or make a new branch on the spot.
+  - **Add a new clip file / Replace with updated version:** copies the file
+    into `videos/`. Replacing keeps the same name, so every scene using it
+    gets the new cut.
+- **Right, Playtest tab:** the real game in a phone frame, running your
+  latest edits. **Play from here** starts at any scene; the scene on screen
+  is tagged PLAYING on the storyboard.
+- A "things to fix" bar flags missing files, clips that aren't 4:5, branches
+  nothing leads to, and scenes that can't be reached.
+- Undo/redo: Ctrl+Z / Ctrl+Shift+Z (Cmd on Mac). Ctrl+S saves right away.
+
+Other browsers can open the Studio too, but only Chrome and Edge can save
+into a folder; elsewhere use **Download story.json**.
+
 ## Files
 
 | File | What it's for |
 |---|---|
-| `config.js` | **Episodes, step order, titles, settings. Start here.** |
+| `story.json` | **The story: episodes, scenes, branches, endings.** Edit with the Studio |
+| `studio.html` | The Episode Studio storyboard tool |
+| `config.js` | Game-wide settings (title, folders, skip rules) |
 | `minigames/` | One file per minigame, registered in `minigames/index.js` |
 | `videos/` | MP4s and thumbnails (`_unlock.mp4` is required, keep it) |
 | `js/player.js` | Two-`<video>` player: preloading, gapless swaps, iPhone sound unlock |
-| `js/engine.js` | Walks an episode's steps in order |
+| `js/engine.js` | Walks an episode's scenes, follows branches |
 | `js/progress.js` | Saves which episodes are beaten |
 | `js/ui.js` | Menu, top bar, pop-up panels |
 | `tools/encode.sh` | Converts your real videos to iPhone-friendly MP4s |

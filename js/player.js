@@ -55,7 +55,8 @@ export class VideoPlayer {
     return v;
   }
 
-  url(src) { return /^(https?:|blob:|data:)/.test(src) ? src : this.base + src; }
+  // `query` lets the Studio force fresh copies after a clip file is replaced.
+  url(src) { return /^(https?:|blob:|data:)/.test(src) ? src : this.base + src + (this.query || ""); }
 
   // Call from inside a tap handler, before anything async happens.
   unlock() {
