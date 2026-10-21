@@ -31,9 +31,11 @@ export class Engine {
       if (step.type === "video") {
         // play() first (must stay synchronous on the very first step so the
         // tap still counts), then start loading the following clip.
-        const done = this.player.play(step.src);
+        const done = this.player.play(step.src, { loop: !!step.loop });
         if (steps[i + 1]?.type === "video") this.player.preload(steps[i + 1].src);
+        if (step.button) this.ui.showActionButton(step.button, () => this.player.done("action"));
         await done;
+        this.ui.hideActionButton();
       } else if (step.type === "game") {
         this.player.unloadActive();
         const nextVideo = steps.slice(i + 1).find(s => s.type === "video");

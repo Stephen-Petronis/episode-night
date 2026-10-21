@@ -342,6 +342,52 @@ svg { display: block; }
 .pp-btn.is-paused svg { margin-left: 4px; }
 .pp-btn:active { transform: scale(0.94); }
 
+/* Action button over a looping clip (PUNCH!) */
+.action-wrap {
+  position: absolute;
+  left: 0; right: 0; bottom: 7%;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.action-btn {
+  pointer-events: auto;
+  min-width: 58%;
+  padding: 16px 30px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--coral);
+  color: var(--ink);
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: clamp(28px, 9vw, 44px);
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.3);
+  box-shadow: 0 7px 0 #a8382c, 0 12px 30px rgba(0, 0, 0, 0.5);
+  touch-action: none;
+  animation: actionIn 0.35s cubic-bezier(0.2, 1.6, 0.4, 1), actionFlash var(--flash, 2s) ease-out 0.35s infinite;
+}
+.action-btn:active { transform: translateY(5px); box-shadow: 0 2px 0 #a8382c, 0 6px 20px rgba(0, 0, 0, 0.5); }
+.action-btn.hit {
+  animation: actionHit 0.28s ease-out forwards;
+  pointer-events: none;
+}
+@keyframes actionIn { from { transform: scale(0.3); opacity: 0; } }
+/* One bright flash at the start of each cycle, calm for the rest */
+@keyframes actionFlash {
+  0%   { background: var(--coral); transform: scale(1); }
+  8%   { background: var(--marquee); color: var(--night); transform: scale(1.12); box-shadow: 0 7px 0 #b98a1a, 0 0 0 10px rgba(255, 201, 60, 0.45), 0 12px 40px rgba(255, 201, 60, 0.6); }
+  25%  { background: var(--coral); color: var(--ink); transform: scale(1); }
+  100% { background: var(--coral); transform: scale(1); }
+}
+@keyframes actionHit {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.35) rotate(-4deg); background: var(--ink); color: var(--coral); }
+  100% { transform: scale(1.6) rotate(-6deg); opacity: 0; }
+}
+
 .game-layer { position: absolute; inset: 0; z-index: 3; }
 .html-game {
   position: absolute;

@@ -27,6 +27,9 @@ export const CONFIG = {
   //    { type: "video", src: "file.mp4" }
   //    { type: "game",  game: "popBalloons", params: { ... } }
   //    { type: "game",  html: "my-game.html" }   (file in minigames/html/)
+  //    { type: "video", src: "file.mp4", loop: true, button: { label: "PUNCH!",
+  //        appearAt: 1, flashEvery: 2 } }
+  //        → clip repeats until the button is tapped, then the episode moves on
   // -----------------------------------------------------------
   episodes: [
     {
@@ -37,7 +40,9 @@ export const CONFIG = {
         { type: "video", src: "bvs_1.mp4" },   // Bear and Fox at the bar; the door bangs open
         { type: "video", src: "bvs_2.mp4" },   // the Seagull starts yelling
         { type: "video", src: "bvs_3.mp4" },   // Bear and Fox laugh at him
-        { type: "video", src: "bvs_4.mp4" },   // the Seagull really loses it
+        // The Seagull close-up loops (he keeps squawking) until you hit PUNCH.
+        { type: "video", src: "bvs_4.mp4", loop: true,
+          button: { label: "PUNCH!", appearAt: 1, flashEvery: 2 } },
         { type: "game",  html: "bear-vs-seagull.html", title: "Bear vs Seagull" },
       ],
     },

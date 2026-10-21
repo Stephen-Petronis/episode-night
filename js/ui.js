@@ -33,6 +33,9 @@ export class UI {
     this.clipTime = $("#clip-time");
     this.clipCount = $("#clip-count");
     this.skipSpacer = $("#skip-spacer");
+    this.actionWrap = $("#action-wrap");
+    this.actionBtn = $("#action-btn");
+    this._action = null;
     this.track = $("#step-track");
     this.skipBtn = $("#skip-btn");
     this.bigPlay = $("#big-play");
@@ -70,6 +73,14 @@ export class UI {
     };
     this.tapCatcher.addEventListener("click", toggle);
     this.ppBtn.addEventListener("click", toggle);
+    this.actionBtn.addEventListener("pointerdown", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      this._fireAction();
+    });
+    this.actionBtn.addEventListener("click", e => {   // keyboard Enter/Space
+      if (e.detail === 0) this._fireAction();
+    });
     $("#reset-btn").addEventListener("click", async () => {
       const ok = await this.modal({
         title: "Start over?",
@@ -95,6 +106,7 @@ export class UI {
   // ---------- Menu ----------
 
   showMenu() {
+    this.hideActionButton();
     this.mode = "menu";
     this._closeModal();
     this.playerScreen.hidden = true;
@@ -200,7 +212,45 @@ export class UI {
     this.ppBtn.classList.toggle("is-paused", !playing);
   }
 
+  // A big button over a looping clip (e.g. PUNCH! on the Seagull close-up).
+  // Appears `appearAt` seconds in, then flashes once every `flashEvery` seconds.
+  showActionButton(opts, onTap) {
+    const o = typeof opts === "string" ? { label: opts } : opts;
+    this._action = {
+      onTap,
+      appearAt: o.appearAt ?? 1,
+      shown: false,
+      fired: false,
+    };
+    this.actionBtn.textContent = o.label || "GO!";
+    this.actionBtn.setAttribute("aria-label", o.label || "Go");
+    this.actionBtn.style.setProperty("--flash", `${o.flashEvery ?? 2}s`);
+    this.actionBtn.classList.remove("hit");
+    this.actionWrap.hidden = true;
+  }
+
+  hideActionButton() {
+    this._action = null;
+    this.actionWrap.hidden = true;
+  }
+
+  _revealAction() {
+    const a = this._action;
+    if (!a || a.shown) return;
+    a.shown = true;
+    this.actionWrap.hidden = false;
+  }
+
+  _fireAction() {
+    const a = this._action;
+    if (!a || !a.shown || a.fired) return;
+    a.fired = true;
+    this.actionBtn.classList.add("hit");
+    setTimeout(() => a.onTap(), 280);      // let the POW land, then fight
+  }
+
   _onTime(t, d) {
+    if (this._action && !this._action.shown && t >= this._action.appearAt) this._revealAction();
     const pct = d > 0 ? Math.min(100, (t / d) * 100) : 0;
     this.clipFill.style.width = pct + "%";
     this.clipTime.textContent = d > 0 ? `${fmt(t)} / ${fmt(d)}` : "";

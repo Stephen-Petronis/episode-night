@@ -67,8 +67,9 @@ export class VideoPlayer {
     }
   }
 
-  // Plays a clip. Resolves "ended", "skipped" or "stopped".
-  play(src) {
+  // Plays a clip. Resolves "ended", "skipped", "action" or "stopped".
+  // { loop: true } repeats the clip until done("action") or skip() is called.
+  play(src, { loop = false } = {}) {
     this._finish("stopped");                // settle anything still waiting
     const url = this.url(src);
 
@@ -84,6 +85,7 @@ export class VideoPlayer {
     this.standby.pause();
     if (this.standby.dataset.src !== this._preloaded) this._clear(this.standby);
 
+    this.active.loop = loop;
     const done = new Promise(resolve => { this._pending = { resolve }; });
     this._tryPlay();
     return done;
@@ -115,6 +117,9 @@ export class VideoPlayer {
 
   skip() { this._finish("skipped"); }
 
+  // End the current clip because the player did something (e.g. hit PUNCH).
+  done(result = "action") { this._finish(result); }
+
   // Free the visible clip's memory (used while a minigame is on screen).
   // The preloaded next clip is kept.
   unloadActive() {
@@ -131,6 +136,7 @@ export class VideoPlayer {
   }
 
   _load(v, url) {
+    v.loop = false;
     v.dataset.src = url;
     v.src = url;
     v.load();
@@ -146,6 +152,6 @@ export class VideoPlayer {
   _finish(result) {
     const p = this._pending;
     this._pending = null;
-    if (p) { this.active.pause(); p.resolve(result); }
+    if (p) { this.active.pause(); this.active.loop = false; p.resolve(result); }
   }
 }
