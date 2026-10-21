@@ -58,7 +58,8 @@ export class Engine {
 
   _runGame(run, step) {
     return new Promise(resolve => {
-      const game = this.games[step.game];
+      const game = step.html ? this.games.html : this.games[step.game];
+      const params = step.html ? { src: step.html, title: step.title, ...step.params } : (step.params || {});
       const layer = this.ui.gameLayer;
       let cleanup = null;
       layer.hidden = false;
@@ -79,7 +80,7 @@ export class Engine {
         return;                                  // player can Skip or go Home
       }
       cleanup = game.start(layer, {
-        params: step.params || {},
+        params,
         onWin: () => finish("won"),
       });
     });

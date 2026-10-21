@@ -12,9 +12,6 @@ make() { # file color label freq
     -af "volume=0.15" -c:v libx264 -crf 28 -pix_fmt yuv420p -g 48 \
     -c:a aac -b:a 64k -shortest -movflags +faststart "videos/$1"
 }
-make ep1_intro.mp4   "#3b6fd8" "Ep 1 · Intro"   330
-make ep1_part2.mp4   "#2f9e6e" "Ep 1 · Part 2"  392
-make ep1_ending.mp4  "#7a4fd1" "Ep 1 · Ending"  440
 make ep2_intro.mp4   "#d8742f" "Ep 2 · Intro"   294
 make ep2_middle.mp4  "#c23b5a" "Ep 2 · Middle"  349
 make ep2_ending.mp4  "#3b8fb0" "Ep 2 · Ending"  523
@@ -22,6 +19,6 @@ make ep3_intro.mp4   "#5a7d2a" "Ep 3 · Intro"   262
 make ep3_ending.mp4  "#8a3fa0" "Ep 3 · Ending"  587
 
 # Menu thumbnails (4:5, small)
-for e in 1 2 3; do
+for e in 2 3; do
   ffmpeg -y -loglevel error -ss 0.5 -i "videos/ep${e}_intro.mp4" -frames:v 1 -vf scale=256:320 -q:v 4 "videos/ep${e}_thumb.jpg"
 done

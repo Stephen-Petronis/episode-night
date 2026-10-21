@@ -60,6 +60,19 @@ art compresses better; try `CRF=26`.
 
 ## Adding a minigame
 
+**Standalone HTML games (easiest):** put the file in `minigames/html/` and
+add `{ type: "game", html: "my-game.html" }` to an episode. When the player
+wins, the game sends one message:
+
+```js
+window.parent.postMessage({ type: "minigame-complete", result: "win" }, "*");
+```
+
+On a loss it sends nothing and offers "try again" itself. Episode 1's
+`bear-vs-seagull.html` works this way.
+
+**Built-in JS games:**
+
 Design for one thumb: keep the things you tap in the bottom two-thirds.
 
 Copy `minigames/popBalloons.js`, change it, and add it to `minigames/index.js`.

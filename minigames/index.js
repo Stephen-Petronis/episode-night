@@ -9,11 +9,17 @@
 //          player leaves to the menu).
 //
 // To add one: copy popBalloons.js, change it, import it below.
+//
+// Or build the minigame as its own standalone .html file, put it in
+// minigames/html/, and use { type: "game", html: "my-game.html" } in
+// config.js. See htmlGame.js for the one line it needs to send on a win.
 
 import popBalloons from "./popBalloons.js";
 import matchPairs from "./matchPairs.js";
+import htmlGame from "./htmlGame.js";
 
 export const MINIGAMES = {
   popBalloons,
   matchPairs,
+  html: htmlGame,   // used by steps like { type: "game", html: "file.html" }
 };

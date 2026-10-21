@@ -26,19 +26,22 @@ export const CONFIG = {
   //  Step types:
   //    { type: "video", src: "file.mp4" }
   //    { type: "game",  game: "popBalloons", params: { ... } }
+  //    { type: "game",  html: "my-game.html" }   (file in minigames/html/)
   // -----------------------------------------------------------
   episodes: [
     {
       id: "ep1",
-      title: "The Big Day",
-      thumb: "videos/ep1_thumb.jpg",
+      title: "Bear vs Seagull",
+      thumb: "videos/bvs_thumb.jpg",
       steps: [
-        { type: "video", src: "ep1_intro.mp4" },
-        { type: "video", src: "ep1_part2.mp4" },
-        { type: "game",  game: "popBalloons", params: { count: 6 } },
-        { type: "video", src: "ep1_ending.mp4" },
+        { type: "video", src: "bvs_1.mp4" },   // Bear and Fox at the bar; the door bangs open
+        { type: "video", src: "bvs_2.mp4" },   // the Seagull starts yelling
+        { type: "video", src: "bvs_3.mp4" },   // Bear and Fox laugh at him
+        { type: "video", src: "bvs_4.mp4" },   // the Seagull really loses it
+        { type: "game",  html: "bear-vs-seagull.html", title: "Bear vs Seagull" },
       ],
     },
+    // Episodes 2 and 3 are still placeholders. Swap in real videos and games.
     {
       id: "ep2",
       title: "Lost and Found",
