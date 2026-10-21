@@ -6,6 +6,7 @@ const ICON = {
   check: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   play: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" fill="currentColor"/></svg>`,
   skip: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6.5v11l8-5.5zm8 0v11l8-5.5z" fill="currentColor"/></svg>`,
+  pause: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4.2" height="14" rx="1.2" fill="currentColor"/><rect x="13.8" y="5" width="4.2" height="14" rx="1.2" fill="currentColor"/></svg>`,
   star: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2.8 2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.2l-5.7 3.1 1.2-6.4-4.7-4.4 6.4-.8z" fill="currentColor"/></svg>`,
 };
 
@@ -25,7 +26,13 @@ export class UI {
     this.stage = $("#stage");
     this.gameLayer = $("#game-layer");
     this.tapCatcher = $("#tap-catcher");
-    this.hud = $("#hud");
+    this.videoView = $("#video-view");
+    this.epLabel = $("#ep-label");
+    this.ppBtn = $("#pp-btn");
+    this.clipFill = $("#clip-fill");
+    this.clipTime = $("#clip-time");
+    this.clipCount = $("#clip-count");
+    this.skipSpacer = $("#skip-spacer");
     this.track = $("#step-track");
     this.skipBtn = $("#skip-btn");
     this.bigPlay = $("#big-play");
@@ -38,6 +45,7 @@ export class UI {
     $("#home-btn").innerHTML = ICON.home;
     this.bigPlay.innerHTML = ICON.play;
     this.skipBtn.innerHTML = `<span>Skip</span>${ICON.skip}`;
+    this._setPP(true);
 
     this._wire();
   }
@@ -47,6 +55,7 @@ export class UI {
     this.player = player;
     player.onStateChange = playing => this._onPlayState(playing);
     player.onBlocked = () => this._onPlayState(false);
+    player.onTime = (t, d) => this._onTime(t, d);
     player.onError = src => this.showError(
       `Couldn't load ${src.split("/").pop()}. Check the file name in config.js and that the file is in the videos folder.`);
   }
@@ -55,10 +64,12 @@ export class UI {
     $("#home-btn").addEventListener("click", () => this._confirmHome());
     this.skipBtn.addEventListener("click", () => this.engine.skip());
     this.bigPlay.addEventListener("click", () => this.player.resume());
-    this.tapCatcher.addEventListener("click", () => {
+    const toggle = () => {
       if (this.player.paused) this.player.resume();
       else this.player.pause();
-    });
+    };
+    this.tapCatcher.addEventListener("click", toggle);
+    this.ppBtn.addEventListener("click", toggle);
     $("#reset-btn").addEventListener("click", async () => {
       const ok = await this.modal({
         title: "Start over?",
@@ -143,6 +154,8 @@ export class UI {
   // ---------- Playing ----------
 
   showPlayer(ep) {
+    const n = this.config.episodes.indexOf(ep) + 1;
+    this.epLabel.innerHTML = `<span>Episode ${n}</span> ${escapeHtml(ep.title)}`;
     this.menu.hidden = true;
     this.playerScreen.hidden = false;
     this.gameLayer.hidden = true;
@@ -154,10 +167,10 @@ export class UI {
     const step = ep.steps[index];
     this.mode = step.type === "video" ? "video" : "game";
     this.playerScreen.dataset.mode = this.mode;
-    this.tapCatcher.hidden = this.mode !== "video";
+    this.videoView.hidden = this.mode !== "video";
     this.bigPlay.hidden = true;
     this.skipBtn.hidden = !canSkip;
-    this._canSkip = canSkip;
+    this.skipSpacer.hidden = canSkip;
 
     this.track.innerHTML = ep.steps.map((s, i) => {
       const st = i < index ? "done" : i === index ? "now" : "todo";
@@ -167,24 +180,30 @@ export class UI {
     }).join("");
     this.track.setAttribute("aria-label", `Part ${index + 1} of ${ep.steps.length}`);
 
-    this._showHud(this.mode === "video" ? 2500 : 0);
+    if (this.mode === "video") {
+      const videos = ep.steps.filter(s => s.type === "video");
+      this.clipCount.textContent = `Clip ${videos.indexOf(step) + 1} of ${videos.length}`;
+      this._onTime(0, NaN);
+      this._setPP(true);
+    }
   }
 
   _onPlayState(playing) {
     if (this.mode !== "video") return;
     this.bigPlay.hidden = playing;
-    this._showHud(playing ? 2000 : 0);
+    this._setPP(playing);
   }
 
-  // Show the top bar; during a playing video it fades out again.
-  _showHud(hideAfterMs) {
-    clearTimeout(this._hudTimer);
-    this.hud.classList.remove("faded");
-    if (hideAfterMs) {
-      this._hudTimer = setTimeout(() => {
-        if (this.mode === "video" && !this.player.paused) this.hud.classList.add("faded");
-      }, hideAfterMs);
-    }
+  _setPP(playing) {
+    this.ppBtn.innerHTML = playing ? ICON.pause : ICON.play;
+    this.ppBtn.setAttribute("aria-label", playing ? "Pause" : "Play");
+    this.ppBtn.classList.toggle("is-paused", !playing);
+  }
+
+  _onTime(t, d) {
+    const pct = d > 0 ? Math.min(100, (t / d) * 100) : 0;
+    this.clipFill.style.width = pct + "%";
+    this.clipTime.textContent = d > 0 ? `${fmt(t)} / ${fmt(d)}` : "";
   }
 
   async _confirmHome() {
@@ -282,6 +301,11 @@ export class UI {
     clearTimeout(this._toastTimer);
     this._toastTimer = setTimeout(() => this.toastEl.classList.remove("show"), 2000);
   }
+}
+
+function fmt(sec) {
+  const s = Math.max(0, Math.floor(sec));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
 function escapeHtml(s) {

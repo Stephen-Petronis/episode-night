@@ -3,6 +3,11 @@
 Videos play back to back, then a minigame, then more videos, then back to the
 episode menu. Episodes unlock one at a time; beaten episodes can be rewatched.
 
+Built for one-handed portrait play. Videos are 4:5 and play in a framed
+"screen" with a top bar that stays put and play/pause controls under the
+thumb, so the videos feel like part of the game. Minigames take over the
+whole area under the top bar.
+
 Plain HTML/JS, no build step. Runs on GitHub Pages now, and can be wrapped
 with Capacitor for the App Store later.
 
@@ -38,17 +43,24 @@ engine, progress and player.
 
 ## Adding your videos
 
+**Shape: 4:5 portrait.** Film vertical on the phone (9:16 is fine) and keep
+the action in the middle; the encode script trims the top and bottom to 4:5.
+Keep text and faces away from the edges.
+
 1. Encode each clip: `./tools/encode.sh raw/intro.mov videos/ep1_intro.mp4`
+   (720×900 by default; `WIDTH=1080` for 1080×1350)
 2. Clips that always play back to back can be joined into one file so there's
    zero gap: `./tools/encode.sh --join videos/ep1_intro.mp4 raw/a.mov raw/b.mov`
    (every input needs an audio track).
-3. Thumbnail: `ffmpeg -ss 2 -i videos/ep1_intro.mp4 -frames:v 1 -vf scale=480:-2 videos/ep1_thumb.jpg`
+3. Thumbnail: `ffmpeg -ss 2 -i videos/ep1_intro.mp4 -frames:v 1 -vf scale=256:320 videos/ep1_thumb.jpg`
 4. List the files in `config.js`.
 
-Sizes to expect at 720p, CRF 23: roughly 5–15 MB per minute. Flat cartoon
+Sizes to expect at 720×900, CRF 23: roughly 5–15 MB per minute. Flat cartoon
 art compresses better; try `CRF=26`.
 
 ## Adding a minigame
+
+Design for one thumb: keep the things you tap in the bottom two-thirds.
 
 Copy `minigames/popBalloons.js`, change it, and add it to `minigames/index.js`.
 The contract:
@@ -103,6 +115,6 @@ npx cap add ios
 npx cap open ios
 ```
 
-In Xcode, lock orientation to landscape if the videos are 16:9. Also download
+In Xcode, lock orientation to portrait. Also download
 the Baloo 2 font into the project instead of loading it from Google Fonts, so
 it works offline (it falls back to the iPhone's rounded system font anyway).

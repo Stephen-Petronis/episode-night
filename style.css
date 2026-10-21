@@ -78,15 +78,16 @@ svg { display: block; }
 
 .episode-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+  gap: 14px;
 }
 
+/* Card: 4:5 thumbnail on the left (same shape as the episodes), details right */
 .ep-card {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 10px 10px 16px;
+  align-items: center;
+  gap: 14px;
+  padding: 10px;
   text-align: left;
   background: var(--night-2);
   border: 2px solid var(--line);
@@ -98,7 +99,9 @@ svg { display: block; }
 .ep-thumb {
   position: relative;
   display: block;
-  aspect-ratio: 16 / 9;
+  flex: none;
+  width: clamp(96px, 28vw, 128px);
+  aspect-ratio: 4 / 5;
   max-width: 100%;
   border-radius: 16px;
   overflow: hidden;
@@ -107,11 +110,11 @@ svg { display: block; }
 .ep-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .ep-num {
   position: absolute;
-  left: 12px;
+  left: 8px;
   bottom: -4px;
   font-family: var(--display);
   font-weight: 800;
-  font-size: 56px;
+  font-size: 48px;
   line-height: 1;
   color: var(--ink);
   text-shadow: 0 3px 0 rgba(0, 0, 0, 0.28);
@@ -122,7 +125,7 @@ svg { display: block; }
   transform: translate(-50%, -50%);
   display: grid;
   place-items: center;
-  width: 56px; height: 56px;
+  width: 48px; height: 48px;
   border-radius: 50%;
 }
 .ep-lock { background: var(--scrim); color: var(--muted); }
@@ -130,7 +133,7 @@ svg { display: block; }
 .ep-play { background: var(--marquee); color: var(--night); animation: pulse 1.8s ease-in-out infinite; }
 .ep-play svg { width: 28px; height: 28px; margin-left: 3px; }
 
-.ep-meta { display: flex; flex-direction: column; gap: 4px; padding: 0 6px; min-width: 0; }
+.ep-meta { flex: 1; display: flex; flex-direction: column; gap: 4px; padding-right: 6px; min-width: 0; }
 .ep-label {
   font-size: 12px;
   font-weight: 700;
@@ -174,88 +177,123 @@ svg { display: block; }
   text-underline-offset: 3px;
 }
 
-/* ---------------- Player ---------------- */
+/* ---------------- Player ----------------
+   Portrait layout, top to bottom:
+     top bar (always there) → 4:5 screen in a bezel → thumb-reach controls.
+   Minigames replace the screen + controls but keep the top bar, so the
+   videos read as part of the game rather than a cut-away. */
 
-.player { position: fixed; inset: 0; background: #000; overflow: hidden; z-index: 5; }
+.player {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(120% 70% at 50% 35%, var(--night-3), var(--night) 75%);
+  overflow: hidden;
+}
+
+.topbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: calc(var(--inset-t) + 10px);
+  padding-left: var(--gutter-l);
+  padding-right: var(--gutter-r);
+  padding-bottom: 10px;
+  background: var(--night);
+  border-bottom: 2px solid var(--line);
+}
+.nav-btn {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--night-2);
+  color: var(--ink);
+}
+.nav-btn svg { width: 22px; height: 22px; }
+.nav-spacer { flex: none; width: 44px; }
+.nav-skip {
+  width: auto;
+  display: flex;
+  gap: 6px;
+  padding: 0 14px 0 16px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 15px;
+}
+.nav-skip svg { width: 16px; height: 16px; }
+
+.nav-center { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.ep-label-nav {
+  margin: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 17px;
+  line-height: 1.1;
+}
+.ep-label-nav span { color: var(--marquee); margin-right: 4px; }
+
+.step-track { display: flex; justify-content: center; align-items: center; gap: 6px; }
+.trk { flex: none; transition: all 0.3s ease; }
+.trk-video { width: 14px; height: 7px; border-radius: 4px; background: rgba(247, 242, 255, 0.24); }
+.trk-video.done { background: var(--marquee); }
+.trk-video.now { width: 26px; background: var(--ink); }
+.trk-game { width: 15px; height: 15px; color: rgba(247, 242, 255, 0.28); }
+.trk-game svg { width: 100%; height: 100%; }
+.trk-game.done { color: var(--marquee); }
+.trk-game.now { color: var(--coral); transform: scale(1.3); }
+
+.play-area { position: relative; flex: 1; min-height: 0; }
+
+.video-view {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 14px;
+  padding-left: var(--gutter-l);
+  padding-right: var(--gutter-r);
+  padding-bottom: calc(var(--inset-b) + 14px);
+}
+
+/* The screen: as big as fits while staying exactly 4:5 */
+.frame-area { flex: 1; min-height: 0; container-type: size; display: grid; place-items: center; }
+.frame {
+  position: relative;
+  width: min(100cqw, 100cqh * 4 / 5);
+  aspect-ratio: 4 / 5;
+  max-width: 100%;
+  border-radius: 22px;
+  overflow: hidden;
+  background: #000;
+  box-shadow:
+    0 0 0 6px var(--night-2),
+    0 0 0 8px var(--line),
+    0 18px 50px rgba(0, 0, 0, 0.5);
+}
 .stage { position: absolute; inset: 0; }
 .clip {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
   background: #000;
   opacity: 0;
 }
 .clip.show { opacity: 1; }
 .tap-catcher { position: absolute; inset: 0; z-index: 2; }
-.game-layer {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  background: radial-gradient(120% 90% at 50% 0%, var(--night-3), var(--night) 70%);
-}
-
-.hud {
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  z-index: 6;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding-top: calc(var(--inset-t) + 12px);
-  padding-left: var(--gutter-l);
-  padding-right: var(--gutter-r);
-  padding-bottom: 12px;
-  background: linear-gradient(rgba(0, 0, 0, 0.45), transparent);
-  transition: opacity 0.35s ease;
-  pointer-events: none;
-}
-.hud > * { pointer-events: auto; }
-.hud.faded { opacity: 0; }
-.hud.faded > * { pointer-events: none; }
-.player[data-mode="game"] .hud { background: none; }
-
-.hud-btn {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 46px;
-  height: 46px;
-  border: 0;
-  border-radius: 50%;
-  background: var(--scrim);
-  color: var(--ink);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
-}
-.hud-btn svg { width: 22px; height: 22px; }
-.hud-skip {
-  width: auto;
-  display: flex;
-  gap: 6px;
-  padding: 0 16px 0 18px;
-  border-radius: 999px;
-  font-weight: 800;
-}
-.hud-skip svg { width: 18px; height: 18px; }
-
-.step-track {
-  flex: 1;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-.trk { flex: none; transition: all 0.3s ease; }
-.trk-video { width: 16px; height: 8px; border-radius: 4px; background: rgba(247, 242, 255, 0.28); }
-.trk-video.done { background: var(--marquee); }
-.trk-video.now { width: 30px; background: var(--ink); }
-.trk-game { width: 18px; height: 18px; color: rgba(247, 242, 255, 0.3); }
-.trk-game svg { width: 100%; height: 100%; }
-.trk-game.done { color: var(--marquee); }
-.trk-game.now { color: var(--coral); transform: scale(1.35); }
 
 .big-play {
   position: absolute;
@@ -264,14 +302,55 @@ svg { display: block; }
   transform: translate(-50%, -50%);
   display: grid;
   place-items: center;
-  width: 104px; height: 104px;
+  width: 92px; height: 92px;
   border: 0;
   border-radius: 50%;
   background: var(--marquee);
   color: var(--night);
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
 }
-.big-play svg { width: 48px; height: 48px; margin-left: 6px; }
+.big-play svg { width: 42px; height: 42px; margin-left: 5px; }
+
+/* Controls under the screen, where a thumb rests */
+.controls {
+  flex: none;
+  width: 100%;
+  max-width: 460px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.clip-bar { height: 6px; border-radius: 3px; background: rgba(247, 242, 255, 0.14); overflow: hidden; }
+.clip-fill { display: block; height: 100%; width: 0; background: var(--marquee); border-radius: 3px; transition: width 0.25s linear; }
+.controls-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; }
+.clip-count, .clip-time { font-size: 13px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+.clip-time { text-align: right; }
+.pp-btn {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--night-2);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 2px var(--line);
+}
+.pp-btn svg { width: 28px; height: 28px; }
+.pp-btn.is-paused { background: var(--marquee); color: var(--night); box-shadow: none; }
+.pp-btn.is-paused svg { margin-left: 4px; }
+.pp-btn:active { transform: scale(0.94); }
+
+.game-layer { position: absolute; inset: 0; z-index: 3; }
+
+/* Short landscape screens: put the controls beside the screen */
+@media (orientation: landscape) and (max-height: 520px) {
+  .video-view { flex-direction: row; align-items: stretch; padding-bottom: calc(var(--inset-b) + 10px); padding-top: 10px; }
+  .controls { width: 180px; align-self: center; }
+  .controls-row { display: flex; flex-direction: column; gap: 8px; }
+  .clip-time { text-align: center; }
+}
 
 /* ---------------- Pop-up panel ---------------- */
 
@@ -386,7 +465,7 @@ svg { display: block; }
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding-top: calc(var(--inset-t) + 72px);
+  padding-top: 14px;
   padding-left: var(--gutter-l);
   padding-right: var(--gutter-r);
   padding-bottom: calc(var(--inset-b) + 16px);

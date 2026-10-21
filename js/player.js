@@ -25,6 +25,7 @@ export class VideoPlayer {
     this.onBlocked = () => {};
     this.onError = () => {};
     this.onStateChange = () => {};
+    this.onTime = () => {};
   }
 
   _make(stage) {
@@ -43,6 +44,9 @@ export class VideoPlayer {
     });
     v.addEventListener("error", () => {
       if (v === this.active && this._pending) this.onError(v.dataset.src || "");
+    });
+    v.addEventListener("timeupdate", () => {
+      if (v === this.active && this._pending) this.onTime(v.currentTime, v.duration);
     });
     v.addEventListener("play", () => v === this.active && this.onStateChange(true));
     v.addEventListener("pause", () => v === this.active && this.onStateChange(false));

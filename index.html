@@ -33,14 +33,40 @@
 
   <!-- Player: videos + minigames -->
   <section id="player" class="screen player" hidden>
-    <div id="stage" class="stage"></div>
-    <div id="tap-catcher" class="tap-catcher" aria-hidden="true"></div>
-    <div id="game-layer" class="game-layer" hidden></div>
-    <button id="big-play" class="big-play" aria-label="Play" hidden></button>
-    <div id="hud" class="hud">
-      <button id="home-btn" class="hud-btn" aria-label="Back to episodes"></button>
-      <div id="step-track" class="step-track"></div>
-      <button id="skip-btn" class="hud-btn hud-skip" hidden></button>
+    <!-- Top bar: always visible, during videos and minigames -->
+    <header class="topbar">
+      <button id="home-btn" class="nav-btn" aria-label="Back to episodes"></button>
+      <div class="nav-center">
+        <p id="ep-label" class="ep-label-nav"></p>
+        <div id="step-track" class="step-track"></div>
+      </div>
+      <button id="skip-btn" class="nav-btn nav-skip" hidden></button>
+      <span id="skip-spacer" class="nav-spacer" aria-hidden="true"></span>
+    </header>
+
+    <!-- Everything under the top bar -->
+    <div class="play-area">
+      <!-- Video mode: a 4:5 "screen" with a control panel under it -->
+      <div id="video-view" class="video-view">
+        <div class="frame-area">
+          <div class="frame">
+            <div id="stage" class="stage"></div>
+            <div id="tap-catcher" class="tap-catcher" aria-hidden="true"></div>
+            <button id="big-play" class="big-play" aria-label="Play" hidden></button>
+          </div>
+        </div>
+        <div class="controls">
+          <div class="clip-bar" aria-hidden="true"><span id="clip-fill" class="clip-fill"></span></div>
+          <div class="controls-row">
+            <span id="clip-count" class="clip-count"></span>
+            <button id="pp-btn" class="pp-btn" aria-label="Pause"></button>
+            <span id="clip-time" class="clip-time"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Minigame mode: fills the whole area under the top bar -->
+      <div id="game-layer" class="game-layer" hidden></div>
     </div>
   </section>
 

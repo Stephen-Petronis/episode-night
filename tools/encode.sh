@@ -2,8 +2,11 @@
 # Re-encode your real video clips into iPhone-friendly MP4s.
 #
 # Usage:
-#   ./tools/encode.sh input.mov videos/ep1_intro.mp4          # 720p (default)
-#   HEIGHT=1080 ./tools/encode.sh input.mov videos/ep1_intro.mp4
+#   ./tools/encode.sh input.mov videos/ep1_intro.mp4          # 720x900 (default)
+#   WIDTH=1080 ./tools/encode.sh input.mov videos/ep1_intro.mp4   # 1080x1350
+#
+# Every clip comes out 4:5 (portrait). Footage in any other shape is scaled
+# to fill and the edges are trimmed evenly, so frame the action in the middle.
 #
 # Join clips that always play back to back into ONE file (no gap between them):
 #   ./tools/encode.sh --join videos/ep1_intro.mp4 raw/a.mov raw/b.mov raw/c.mov
@@ -19,7 +22,9 @@
 
 set -euo pipefail
 
-HEIGHT="${HEIGHT:-720}"
+WIDTH="${WIDTH:-720}"
+HEIGHT=$(( WIDTH * 5 / 4 ))
+FIT="scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=increase,crop=${WIDTH}:${HEIGHT},setsar=1,fps=24"
 CRF="${CRF:-23}"
 COMMON=(-c:v libx264 -preset slow -crf "$CRF" -profile:v high -level 4.0
         -pix_fmt yuv420p -g 48 -c:a aac -b:a 128k -ac 2 -ar 48000
@@ -30,7 +35,7 @@ if [[ "${1:-}" == "--join" ]]; then
   inputs=(); filter=""; n=0
   for f in "$@"; do
     inputs+=(-i "$f")
-    filter+="[$n:v]scale=-2:${HEIGHT},setsar=1,fps=24[v$n];[$n:a]aresample=48000[a$n];"
+    filter+="[$n:v]${FIT}[v$n];[$n:a]aresample=48000[a$n];"
     n=$((n+1))
   done
   for ((i=0;i<n;i++)); do filter+="[v$i][a$i]"; done
@@ -38,7 +43,7 @@ if [[ "${1:-}" == "--join" ]]; then
   ffmpeg -y "${inputs[@]}" -filter_complex "$filter" -map "[v]" -map "[a]" "${COMMON[@]}" "$out"
 else
   in="$1"; out="$2"
-  ffmpeg -y -i "$in" -vf "scale=-2:${HEIGHT},fps=24" "${COMMON[@]}" "$out"
+  ffmpeg -y -i "$in" -vf "$FIT" "${COMMON[@]}" "$out"
 fi
 
 echo "Wrote $out ($(du -h "$out" | cut -f1))"
